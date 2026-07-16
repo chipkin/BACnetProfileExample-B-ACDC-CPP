@@ -80,6 +80,21 @@ It also exposes the three **optional** status properties, because they are what
 make the example legible — they report what the door *is*, next to what it was
 *commanded* to be: `Door_Status`, `Lock_Status`, `Secured_Status`.
 
+## Who serves what: application or stack?
+
+For the **Access Door "Cobalt"** - the object that makes this a B-ACDC:
+
+| Property | Served by | How |
+|---|---|---|
+| `Object_Identifier`, `Object_Type`, `Object_List`, `Property_List`, `Status_Flags` | **stack** | generated from the object you added |
+| `Current_Command_Priority` | **stack** | computed from the Priority_Array (required at Protocol_Revision 24) |
+| `Present_Value` | **you (write) / stack (read)** | `SetPropertyEnumerated` accepts a door-value write (lock/unlock/pulse); on read the **stack computes** it from the Priority_Array slots (highest non-null, or `Relinquish_Default` = **lock**) |
+| `Priority_Array`, `Relinquish_Default` | **you** | `GetPropertyEnumerated` serves each slot's door value; `GetPropertyBool` reports whether a slot is null |
+| `Reliability` | **you** | `GetPropertyEnumerated` - served as `no-fault-detected(0)`, which is also the datatype default, so it reads correctly either way |
+| `Object_Name` | **you** | `GetPropertyCharString` |
+| `Door_Pulse_Time`, `Door_Extended_Pulse_Time`, `Door_Open_Too_Long_Time` | **you** | `GetPropertyUnsignedInteger` - the timing properties no other object in this series has |
+| `Event_State` | **stack**, sort of | no alarming here, so it reads `normal(0)` as a datatype default - correct by coincidence, not computation |
+
 ## Before you ship
 
 This example is a tutorial, and it identifies itself as one. Everything in this
