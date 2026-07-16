@@ -219,6 +219,9 @@ struct Commandable {
 // The door defaults to LOCKED when nothing commands it. That is the safe resting
 // state for an access-control door: if every priority slot is relinquished, the
 // door locks.
+// The { { false }, { 0 }, default } initializer zero-fills all 16 slots of isSet
+// and value (C++ aggregate rules: the remaining elements are value-initialized),
+// so every priority slot starts null and Present_Value reports relinquishDefault.
 static Commandable g_accessDoor = { { false }, { 0 }, (double)DOOR_VALUE_LOCK };
 
 // A WriteProperty to a commandable Present_Value carries a priority 1..16. When a
@@ -809,15 +812,15 @@ int main(int argc, char** argv) {
     // Every stack setup call returns a bool; a real device should always check
     // it, so this example does too.
     if (!BACnetStack_AddObject(g_deviceInstance, OBJECT_TYPE_ANALOG_INPUT, ANALOG_INPUT_INSTANCE)) {
-        printf("Error: Failed to add Analog Input 1 (Bronze).\n");
+        printf("Error: Failed to add Analog Input %u (Bronze).\n", ANALOG_INPUT_INSTANCE);
         return 1;
     }
     if (!BACnetStack_AddObject(g_deviceInstance, OBJECT_TYPE_BINARY_INPUT, BINARY_INPUT_INSTANCE)) {
-        printf("Error: Failed to add Binary Input 1 (Emerald).\n");
+        printf("Error: Failed to add Binary Input %u (Emerald).\n", BINARY_INPUT_INSTANCE);
         return 1;
     }
     if (!BACnetStack_AddObject(g_deviceInstance, OBJECT_TYPE_MULTI_STATE_INPUT, MULTI_STATE_INPUT_INSTANCE)) {
-        printf("Error: Failed to add Multi-State Input 1 (Hot Pink).\n");
+        printf("Error: Failed to add Multi-State Input %u (Hot Pink).\n", MULTI_STATE_INPUT_INSTANCE);
         return 1;
     }
 
@@ -825,7 +828,7 @@ int main(int argc, char** argv) {
     // This one object is why the profile exists. It is added with the plain
     // AddObject - the stack has no special Add*Object helper for it.
     if (!BACnetStack_AddObject(g_deviceInstance, OBJECT_TYPE_ACCESS_DOOR, ACCESS_DOOR_INSTANCE)) {
-        printf("Error: Failed to add Access Door 1 (Cobalt).\n");
+        printf("Error: Failed to add Access Door %u (Cobalt).\n", ACCESS_DOOR_INSTANCE);
         return 1;
     }
 
