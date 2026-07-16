@@ -35,7 +35,7 @@ First release: a complete B-ACDC (Access Control Door Controller) tutorial.
 - Value validation: a `Present_Value` write outside the BACnetDoorValue range
   (0..3) is rejected with `value-out-of-range`.
 - `README.md` (human tutorial), `AGENTS.md` (agent guidance), `LICENSE` (CC0-1.0),
-  the vendored `common/` helper (v1.1.0), and a CMake build that compiles the CAS
+  the vendored `common/` helper (v1.3.0), and a CMake build that compiles the CAS
   BACnet Stack from source.
 
 ### Notes

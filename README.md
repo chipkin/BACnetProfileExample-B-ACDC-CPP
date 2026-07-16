@@ -72,7 +72,7 @@ three:
 
 | Property | Value here | Meaning |
 |---|---|---|
-| `Door_Pulse_Time` | 30 (3.0 s) | How long a `pulseUnlock` holds the door unlocked |
+| `Door_Pulse_Time` | 30 (3.0 s) | How long a `pulseUnlock` holds the door unlocked *on a real controller* (this example serves the property but does not time-simulate the auto-revert - see the note in `SetPropertyEnumerated`) |
 | `Door_Extended_Pulse_Time` | 100 (10.0 s) | The same, for `extendedPulseUnlock` (e.g. an accessibility door) |
 | `Door_Open_Too_Long_Time` | 300 (30.0 s) | How long the door may stand open before it is a problem |
 
@@ -156,7 +156,7 @@ With a BACnet client (e.g. the
 |---|---|
 | Example version | 1.0.0 |
 | `common/` helper | 1.3.0 |
-| CAS BACnet Stack | 6.0.0.0 (submodule pinned at the series-wide commit) |
+| CAS BACnet Stack | 6.0.0.0 (submodule pinned at the 6.x series commit) |
 | Protocol_Revision | 24 (the stack default — the highest it supports) |
 | Verified on | Windows (MSVC 2022, C++17) |
 
