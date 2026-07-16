@@ -140,6 +140,14 @@ static const char* APP_VERSION = "1.0.0";
 // examples can run on one subnet) and can be overridden with --deviceID.
 static uint32_t g_deviceInstance = 389011;
 
+// ---- Device identity: CHANGE ALL OF THIS BEFORE YOU SHIP --------------------
+// Everything in this block is read by clients and shown to the operator in every
+// discovery tool on the network. Left as-is, your product will appear on a real
+// site announcing itself as a Chipkin demo. None of it is cosmetic:
+// Object_Name must be unique across the BACnet internetwork, and Model_Name /
+// Vendor_Identifier are what a building operator uses to identify your device.
+// -----------------------------------------------------------------------------
+
 // Your BACnet Vendor Identifier. 389 = Chipkin Automation Systems; change this
 // to YOUR company's vendor ID before shipping a product. Vendor IDs are assigned
 // by ASHRAE - request one (free) at https://bacnet.org/assigned-vendor-ids/.
@@ -287,7 +295,22 @@ static const char* DoorValueName(uint32_t doorValue) {
 // The stack calls these when a client reads a property. For each data type the
 // stack uses a separate callback. We return true (and fill *value) when we
 // recognise the (object, property) pair, and false otherwise so the stack
-// answers with the proper BACnet error.
+// answers with the proper BACnet error. Note what false does NOT mean: it is not
+// "the read failed", and it is not "the value is null". It means "not mine" -
+// you are declining to answer, and the stack turns that into a BACnet error.
+//
+// ADDING AN OBJECT? READ THIS FIRST.
+// These callbacks are not uniformly strict, and the difference bites:
+//   - GetPropertyReal / GetPropertyEnumerated / GetPropertyUnsignedInteger match
+//     on object type AND INSTANCE (directly, or via GetCommandable(), which
+//     looks up the exact type+instance pair). A new instance falls through every
+//     one of those checks and gets an error.
+//   - GetPropertyBool serves Out_Of_Service on object TYPE ONLY, so a new
+//     instance of an existing type gets Out_Of_Service for free.
+// So a half-added object answers Out_Of_Service but errors on Present_Value and
+// Units - i.e. it looks alive on a scan and is non-conformant. When you add an
+// instance, walk EVERY callback below, then read back every required property of
+// the new object.
 // -----------------------------------------------------------------------------
 
 // REAL (floating point) - the Analog Input's Present_Value.
