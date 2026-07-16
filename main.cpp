@@ -294,23 +294,39 @@ static const char* DoorValueName(uint32_t doorValue) {
 //
 // The stack calls these when a client reads a property. For each data type the
 // stack uses a separate callback. We return true (and fill *value) when we
-// recognise the (object, property) pair, and false otherwise so the stack
-// answers with the proper BACnet error. Note what false does NOT mean: it is not
-// "the read failed", and it is not "the value is null". It means "not mine" -
-// you are declining to answer, and the stack turns that into a BACnet error.
+// recognise the (object, property) pair, and false otherwise.
+//
+// WHAT false ACTUALLY DOES - and this is the most important paragraph in the
+// file, because an earlier version of this comment got it backwards. Returning
+// false does NOT reliably produce a BACnet error. The stack only errors for the
+// handful of properties it refuses to invent (BACnetBusinessLogic.cpp: the
+// valueShouldBeInitialized switch) - Present_Value, Number_Of_States,
+// Relinquish_Default, Local_Date, Local_Time, and a Network Port's APDU_Length.
+// For EVERYTHING ELSE, a false return falls through to GetDefaultPropertyValue()
+// (BACnetDBDevice.cpp) and the stack SILENTLY SUBSTITUTES a default:
+//     Object_Name -> the literal string "undefined"
+//     Units       -> no-units (95)
+//     otherwise   -> a datatype zero-value
 //
 // ADDING AN OBJECT? READ THIS FIRST.
-// These callbacks are not uniformly strict, and the difference bites:
+// The consequence is the opposite of reassuring. These callbacks are not
+// uniformly strict:
 //   - GetPropertyReal / GetPropertyEnumerated / GetPropertyUnsignedInteger match
 //     on object type AND INSTANCE (directly, or via GetCommandable(), which
 //     looks up the exact type+instance pair). A new instance falls through every
-//     one of those checks and gets an error.
+//     one of those checks.
 //   - GetPropertyBool serves Out_Of_Service on object TYPE ONLY, so a new
 //     instance of an existing type gets Out_Of_Service for free.
-// So a half-added object answers Out_Of_Service but errors on Present_Value and
-// Units - i.e. it looks alive on a scan and is non-conformant. When you add an
-// instance, walk EVERY callback below, then read back every required property of
-// the new object.
+// So a half-added object does NOT fail loudly. Its Present_Value errors (that
+// one is in the list above) - but its Object_Name reads back as "undefined" and
+// its Units as no-units, with no error at all. Add two objects that way and BOTH
+// report Object_Name "undefined": duplicate object names within one device, which
+// is a spec violation and a hard BTL failure, and which every scan tool will show
+// you as a healthy object. The device looks fine and is non-conformant.
+//
+// So: when you add an instance, walk EVERY callback below, then read back every
+// required property of the new object and DIFF IT against the existing one. Do
+// not trust "it scanned OK" - that is exactly the failure mode.
 // -----------------------------------------------------------------------------
 
 // REAL (floating point) - the Analog Input's Present_Value.
@@ -817,6 +833,12 @@ int main(int argc, char** argv) {
     // just supply their values. Only OPTIONAL properties need SetPropertyEnabled.
     //
     // State_Text is optional on a Multi-State Input.
+    if (!BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_DEVICE,
+                                        g_deviceInstance, PROPERTY_IDENTIFIER_DESCRIPTION, true)) {
+        printf("Error: Failed to enable Description on the Device object.\n");
+        return 1;
+    }
+
     if (!BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_MULTI_STATE_INPUT,
                                         MULTI_STATE_INPUT_INSTANCE, PROPERTY_IDENTIFIER_STATE_TEXT, true)) {
         printf("Error: Failed to enable State_Text on Multi-State Input 1 (Hot Pink).\n");
