@@ -38,7 +38,7 @@ namespace CASExampleHelper {
 // version). Bump it whenever anything in common/ changes, and record the
 // change in common/CHANGELOG.md - every example in the series must then be
 // re-synced to the same common/ version.
-static const char* COMMON_VERSION = "1.1.0";
+static const char* COMMON_VERSION = "1.2.0";
 
 // Print the example's name + version, the linked CAS BACnet Stack version,
 // and the common/ helper version.
@@ -49,6 +49,18 @@ void PrintVersion(const char* appName, const char* appVersion);
 void PrintHelp(const char* appName, const char* appVersion);
 
 // --- Command line ----------------------------------------------------------
+// Handle the two options that exit instead of running: --help and --version.
+// Call this FIRST in main(), before binding a socket or touching the stack:
+//
+//     if (CASExampleHelper::HandleHelpAndVersionArgs(argc, argv, APP_NAME, APP_VERSION)) {
+//         return 0;
+//     }
+//
+// Returns true if it printed something and the caller should exit(0); false to
+// carry on starting up. Every example in the series supports --help/--version,
+// so this lives here rather than in each main.cpp.
+bool HandleHelpAndVersionArgs(int argc, char** argv, const char* appName, const char* appVersion);
+
 // Return the UDP port to use: the value after "--port" if present, else
 // defaultPort. Common to every example.
 uint16_t ParsePortArg(int argc, char** argv, uint16_t defaultPort);

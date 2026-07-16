@@ -687,6 +687,11 @@ int main(int argc, char** argv) {
     setvbuf(stdout, NULL, _IONBF, 0);
 
     // --- Command line + version --------------------------------------------
+    // --help / --version print and exit, so handle them before we bind a socket
+    // or touch the stack.
+    if (CASExampleHelper::HandleHelpAndVersionArgs(argc, argv, APP_NAME, APP_VERSION)) {
+        return 0;
+    }
     const uint16_t port = CASExampleHelper::ParsePortArg(argc, argv, 47808);
     g_deviceInstance = CASExampleHelper::ParseDeviceIdArg(argc, argv, g_deviceInstance);
     CASExampleHelper::PrintVersion(APP_NAME, APP_VERSION);
@@ -789,18 +794,24 @@ int main(int argc, char** argv) {
     // just supply their values. Only OPTIONAL properties need SetPropertyEnabled.
     //
     // State_Text is optional on a Multi-State Input.
-    BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_MULTI_STATE_INPUT,
-                                   MULTI_STATE_INPUT_INSTANCE, PROPERTY_IDENTIFIER_STATE_TEXT, true);
+    if (!BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_MULTI_STATE_INPUT,
+                                        MULTI_STATE_INPUT_INSTANCE, PROPERTY_IDENTIFIER_STATE_TEXT, true)) {
+        printf("Error: Failed to enable State_Text on Multi-State Input 1 (Hot Pink).\n");
+        return 1;
+    }
 
     // Door_Status / Lock_Status / Secured_Status are optional on an Access Door
     // (clause 12.3). We expose them because they are what makes this example
     // legible: they report what the door IS, next to what it was COMMANDED to be.
-    BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_ACCESS_DOOR,
-                                   ACCESS_DOOR_INSTANCE, PROPERTY_IDENTIFIER_DOOR_STATUS, true);
-    BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_ACCESS_DOOR,
-                                   ACCESS_DOOR_INSTANCE, PROPERTY_IDENTIFIER_LOCK_STATUS, true);
-    BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_ACCESS_DOOR,
-                                   ACCESS_DOOR_INSTANCE, PROPERTY_IDENTIFIER_SECURED_STATUS, true);
+    if (!BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_ACCESS_DOOR,
+                                        ACCESS_DOOR_INSTANCE, PROPERTY_IDENTIFIER_DOOR_STATUS, true) ||
+        !BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_ACCESS_DOOR,
+                                        ACCESS_DOOR_INSTANCE, PROPERTY_IDENTIFIER_LOCK_STATUS, true) ||
+        !BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_ACCESS_DOOR,
+                                        ACCESS_DOOR_INSTANCE, PROPERTY_IDENTIFIER_SECURED_STATUS, true)) {
+        printf("Error: Failed to enable the Access Door 1 (Cobalt) status properties.\n");
+        return 1;
+    }
 
     // --- Make the Access Door commandable -----------------------------------
     // A commandable object's Present_Value is resolved from a 16-slot
@@ -811,13 +822,13 @@ int main(int argc, char** argv) {
     // them on AddObject; marking Present_Value writable is what flips the object
     // into commandable mode. We enable the other two explicitly anyway, for
     // clarity - this is the same three-call pattern the B-SA example uses.)
-    BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_ACCESS_DOOR,
-                                   ACCESS_DOOR_INSTANCE, PROPERTY_IDENTIFIER_PRIORITY_ARRAY, true);
-    BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_ACCESS_DOOR,
-                                   ACCESS_DOOR_INSTANCE, PROPERTY_IDENTIFIER_RELINQUISH_DEFAULT, true);
-    if (!BACnetStack_SetPropertyWritable(g_deviceInstance, OBJECT_TYPE_ACCESS_DOOR,
+    if (!BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_ACCESS_DOOR,
+                                        ACCESS_DOOR_INSTANCE, PROPERTY_IDENTIFIER_PRIORITY_ARRAY, true) ||
+        !BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_ACCESS_DOOR,
+                                        ACCESS_DOOR_INSTANCE, PROPERTY_IDENTIFIER_RELINQUISH_DEFAULT, true) ||
+        !BACnetStack_SetPropertyWritable(g_deviceInstance, OBJECT_TYPE_ACCESS_DOOR,
                                          ACCESS_DOOR_INSTANCE, PROPERTY_IDENTIFIER_PRESENT_VALUE, true)) {
-        printf("Error: Failed to make Access Door 1 (Cobalt) Present_Value writable.\n");
+        printf("Error: Failed to make Access Door 1 (Cobalt) commandable.\n");
         return 1;
     }
 
