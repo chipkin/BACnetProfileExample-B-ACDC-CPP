@@ -788,6 +788,23 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // Discovery: Who-Is/I-Am (DM-DDB-B) and Who-Has/I-Have (DM-DOB-B).
+    //
+    // These need enabling even though the device already ANSWERS them. The
+    // stack's service defaults are whoIs + whoHas + readProperty only
+    // (BACnetDBDevice.cpp) - iAm and iHave are left FALSE. Who-Is is answered and
+    // the start-up I-Am is sent regardless, because neither is gated on the bit;
+    // but Protocol_Services_Supported is emitted verbatim from that bitstring, so
+    // without these calls the device DOES I-Am and I-Have while telling every
+    // client it supports neither. The README claims DM-DDB-B and DM-DOB-B; this
+    // is what makes the claim true on the wire.
+    if (!BACnetStack_SetServiceEnabled(g_deviceInstance, SERVICE_WHO_IS, true) ||
+        !BACnetStack_SetServiceEnabled(g_deviceInstance, SERVICE_I_AM, true) ||
+        !BACnetStack_SetServiceEnabled(g_deviceInstance, SERVICE_WHO_HAS, true) ||
+        !BACnetStack_SetServiceEnabled(g_deviceInstance, SERVICE_I_HAVE, true)) {
+        printf("Error: Failed to enable the discovery services (Who-Is/I-Am, Who-Has/I-Have).\n");
+        return 1;
+    }
     // --- Add the read-only sensor objects -----------------------------------
     // Every stack setup call returns a bool; a real device should always check
     // it, so this example does too.
