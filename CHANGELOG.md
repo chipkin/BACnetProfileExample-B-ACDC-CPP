@@ -5,7 +5,11 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2026-07-15
+## [1.0.0] - unreleased
+
+> Not tagged yet: this repository has no tags at all. `release.yml` publishes binaries on a `v*.*.*`
+> tag, so until that tag exists this section describes what is on the
+> branch, not what shipped.
 
 First release: a complete B-ACDC (Access Control Door Controller) tutorial.
 
@@ -44,4 +48,4 @@ First release: a complete B-ACDC (Access Control Door Controller) tutorial.
   stack default). Built and run on Windows (MSVC 2022, C++17): the device starts,
   registers all six objects, and broadcasts its I-Am.
 
-[1.0.0]: https://github.com/chipkin/BACnetProfileExample-B-ACDC-CPP/releases/tag/v1.0.0
+[1.0.0]: https://github.com/chipkin/BACnetProfileExample-B-ACDC-CPP/commits/llm-auto-2026-july
