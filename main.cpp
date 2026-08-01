@@ -306,14 +306,13 @@ static const char* DoorValueName(uint32_t doorValue) {
 // stack uses a separate callback. We return true (and fill *value) when we
 // recognise the (object, property) pair, and false otherwise.
 //
-// WHAT false ACTUALLY DOES - and this is the most important paragraph in the
-// file, because an earlier version of this comment got it backwards. Returning
-// false does NOT reliably produce a BACnet error. The stack only errors for the
-// handful of properties it refuses to invent (BACnetBusinessLogic.cpp: the
-// valueShouldBeInitialized switch) - Present_Value, Number_Of_States,
-// Relinquish_Default, Local_Date, Local_Time, and a Network Port's APDU_Length.
-// For EVERYTHING ELSE, a false return falls through to GetDefaultPropertyValue()
-// (BACnetDBDevice.cpp) and the stack SILENTLY SUBSTITUTES a default:
+// WHAT false ACTUALLY DOES - the most important paragraph in this file, and the
+// opposite of what most people assume. Returning false does NOT reliably produce
+// a BACnet error. The stack only errors for the handful of properties it refuses
+// to invent: Present_Value, Number_Of_States, Relinquish_Default, Local_Date,
+// Local_Time, and a Network Port's APDU_Length.
+// For EVERYTHING ELSE, a false return means the stack SILENTLY SUBSTITUTES a
+// default:
 //     Object_Name -> the literal string "undefined"
 //     Units       -> no-units (95)
 //     otherwise   -> a datatype zero-value
@@ -869,9 +868,9 @@ int main(int argc, char** argv) {
     // Every BACnet device (Protocol_Revision 17+) must have at least one Network
     // Port object describing the port it talks on. This one is the BACnet/IP
     // application port; it is the lowest layer, so its reference port is "none".
-    // v6: the old AddNetworkPortObject was removed - use the WithNetworkNumber
-    // form. networkNumber 0 + quality "unknown" reproduce the old behaviour (a
-    // local port that has not learned its network number).
+    // networkNumber 0 with quality "unknown" describes a local port that has not
+    // learned its network number - the right answer for a device that is not a
+    // router and has not been told one.
     if (!BACnetStack_AddNetworkPortObjectWithNetworkNumber(
             g_deviceInstance, NETWORK_PORT_INSTANCE,
             NETWORK_PORT_NETWORK_TYPE_IPV4,
