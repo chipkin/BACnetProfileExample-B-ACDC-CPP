@@ -5,6 +5,34 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - unreleased
+
+### Changed
+
+- **Stack pinned to `6.x` @ `abd4cee1` (6.0.21.0), STATIC link.** Replaces the
+  `6.x-TestTool` @ `756371c1` pin. `common/` bumped to **v2.1.0** (verbatim copy
+  from B-SS-CPP), byte-identical to the other migrated examples. (v2.1.0 adds
+  `KeyCommand::DemoAdvance` for B-AAC's Wave 1 SCHED-I-B demo; purely additive,
+  no change needed here.)
+  - Every `GetProperty{Bool,CharacterString,Enumerated,OctetString,Real,UnsignedInteger}`
+    callback gains a trailing `uint32_t* errorCode` out-parameter; each declines
+    with `(void)errorCode` except `GetPropertyCharString`, which now names
+    `ERROR_CODE_INVALID_ARRAY_INDEX` for an out-of-range `State_Text` read. See
+    "THE errorCode OUT-PARAMETER" comment block in `main.cpp`.
+  - `BACnetStack_AddNetworkPortObjectWithNetworkNumber` removed; replaced with
+    the single `BACnetStack_AddNetworkPortObject`, which now always takes the
+    network number and its quality.
+  - `main.cpp` calls `CASExampleHelper::SetNetworkPortInstance(NETWORK_PORT_INSTANCE)`
+    before `RegisterCommonCallbacks()`, so the shared transport callbacks know
+    which Network Port object owns the socket.
+  - This example now **builds and ships STATIC-only**
+    (`CAS_BACNET_STACK_LINK=STATIC`, built from
+    `tools/build-stack-static.sh`). `CMakeLists.txt` and the README no longer
+    mention DLL/SOURCE as the way this example is built.
+  - Release CI (`release.yml`) replaced with the Wave 0 template: builds the
+    static library first, asserts `CAS_BACNET_STACK_LINK=STATIC` in
+    `CMakeCache.txt`, smoke-tests the binary, and uploads `metrics-<os>.json`.
+
 ## [Unreleased]
 
 ### Changed
