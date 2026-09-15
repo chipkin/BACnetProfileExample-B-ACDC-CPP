@@ -401,6 +401,12 @@ run (`metrics-windows.json` / `metrics-linux.json`), both built with
 `CAS_BACNET_STACK_LINK=STATIC`:
 
 <!-- METRICS -->
+| Platform | Binary | Size | SHA-256 (prefix) | Start-up to `ready` | Stack commit | Link mode | Compiler |
+|---|---|---|---|---|---|---|---|
+| Windows x64 (windows-2022) | `BACnetExampleBACDC.exe` | 3,249,152 bytes (~3.1 MiB) | `d7944a0b8e59ac35` | 74 ms | `abd4cee1` | STATIC | Visual Studio 17 2022 |
+| Linux x64 (ubuntu-latest) | `BACnetExampleBACDC` | 43,336 bytes (~42 KiB) | `ea2d6bccf56e3787` | 12 ms | `abd4cee1` | STATIC | `/usr/bin/c++` |
+
+From release [v1.1.0](https://github.com/chipkin/BACnetProfileExample-B-ACDC-CPP/releases/tag/v1.1.0) (`metrics-windows.json` / `metrics-linux.json`).
 
 ## License
 
