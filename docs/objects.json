@@ -1,0 +1,54 @@
+{
+  "objects": [
+    {
+      "type": "Analog Input",
+      "instance": 1,
+      "name": "Bronze",
+      "app": ["Present_Value", "Object_Name", "Units", "Out_Of_Service"],
+      "enabled": [],
+      "writable": [],
+      "accepted": ["Event_State"],
+      "note": "REAL, degrees Celsius; starts at 21.5"
+    },
+    {
+      "type": "Binary Input",
+      "instance": 1,
+      "name": "Emerald",
+      "app": ["Present_Value", "Object_Name", "Polarity", "Out_Of_Service"],
+      "enabled": [],
+      "writable": [],
+      "accepted": ["Event_State"],
+      "note": "starts inactive"
+    },
+    {
+      "type": "Multi-state Input",
+      "instance": 1,
+      "name": "Hot Pink",
+      "app": ["Present_Value", "Object_Name", "Number_Of_States", "Out_Of_Service", "State_Text"],
+      "enabled": ["State_Text"],
+      "writable": [],
+      "accepted": ["Event_State"],
+      "note": "state 1 of 3: On, Off, Auto"
+    },
+    {
+      "type": "Access Door",
+      "instance": 1,
+      "name": "Cobalt",
+      "app": ["Object_Name", "Reliability", "Out_Of_Service", "Relinquish_Default", "Door_Pulse_Time", "Door_Extended_Pulse_Time", "Door_Open_Too_Long_Time", "Door_Status", "Lock_Status", "Secured_Status"],
+      "enabled": ["Door_Status", "Lock_Status", "Secured_Status"],
+      "writable": ["Present_Value"],
+      "accepted": ["Event_State"],
+      "note": "the B-ACDC-defining object; commandable - Present_Value and Priority_Array are stack-computed from the 16-slot priority array this example serves; Relinquish_Default = lock(0). Door_Status, Lock_Status, and Secured_Status are optional but enabled here because they make the example legible (what the door IS vs. what it was COMMANDED to be)"
+    },
+    {
+      "type": "Network Port",
+      "instance": 1,
+      "name": "Vermilion",
+      "app": ["Object_Name", "Out_Of_Service", "Network_Type", "Protocol_Level", "Changes_Pending"],
+      "enabled": [],
+      "writable": [],
+      "accepted": ["Reliability"],
+      "note": "BACnet/IP; Network_Type and Protocol_Level are set from BACnetStack_AddNetworkPortObject()'s arguments (IPv4, BACnet Application) at start-up, not a GetProperty callback like the object's other app-served rows; Changes_Pending is likewise computed and answered natively by the stack's Network Port object. Reliability has no fault condition this example detects, so it is accepted at the generic default (normal)"
+    }
+  ]
+}

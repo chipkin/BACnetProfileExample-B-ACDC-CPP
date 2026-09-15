@@ -24,15 +24,22 @@ This repository is self-contained:
 
 ## Build
 
+This example links the CAS BACnet Stack as a prebuilt **STATIC** library - build
+the library once from the pinned submodule commit, then configure and build:
+
 ```bash
 git submodule update --init --recursive   # once, if not cloned with --recursive
-cmake -B build -S .
+tools/build-stack-static.sh BACnetProfileExample-B-ACDC-CPP   # from the series root
+cmake -B build -S . -DCAS_BACNET_STACK_LINK=STATIC
 cmake --build build --config Release
 ```
 
-The first build compiles the whole stack (~600 files) and takes a few minutes;
-later incremental builds are fast. Use `-D CAS_STACK_DIR=...` only if your stack
-lives outside the bundled submodule.
+The stack library build compiles the whole stack (~600 files) once and takes a
+few minutes; the example itself then builds in seconds, and later incremental
+rebuilds are fast. Use `-D CAS_STACK_DIR=...` only if your stack lives outside
+the bundled submodule. The adapter also offers a SOURCE mode (compiles the
+stack straight into the executable, no library build); this example builds and
+ships STATIC only.
 
 ## Run
 
