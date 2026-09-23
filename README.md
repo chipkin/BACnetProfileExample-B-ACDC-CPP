@@ -24,7 +24,7 @@ one **commandable Access Door** that a client locks and unlocks.
 ## The device this example creates
 
 ```
-Device 389011  "Rainbow"   (Vendor 389 - Chipkin Automation Systems)
+Device 389011  "Chipkin Example B-ACDC"   (Vendor 389 - Chipkin Automation Systems)
     │
     ├── Analog Input 1       "Bronze"      Present_Value  21.5    (REAL, degrees Celsius; read-only)
     ├── Binary Input 1       "Emerald"     Present_Value  active  (0 = inactive / 1 = active; read-only)
@@ -80,7 +80,7 @@ profile with its own example.
 
 | Object type | Instance | Name |
 |-------------|:--------:|------|
-| Device | 389011 | Rainbow |
+| Device | 389011 | Chipkin Example B-ACDC |
 | Analog Input | 1 | Bronze |
 | Binary Input | 1 | Emerald |
 | Multi-State Input | 1 | Hot Pink |
@@ -177,7 +177,7 @@ CAS BACnet Stack version: 6.0.21.0
 Common helper (common/) version: 2.5.0
 FYI: Listening for BACnet/IP on UDP port 47808 (Network Port 1).
 TX 21 bytes to 192.168.3.255:47808 (broadcast) (Network Port 1)
-FYI: Device 389011 ("Rainbow") ready. Vendor ID 389. Press 'h' for help.
+FYI: Device 389011 ("Chipkin Example B-ACDC") ready. Vendor ID 389. Press 'h' for help.
 FYI: Access Door 1 (Cobalt) starts lock. WriteProperty its Present_Value (0=lock, 1=unlock) to command it.
 ```
 
@@ -225,7 +225,7 @@ Use a BACnet client such as the
 1. **Discover** - send a **Who-Is**. The device replies with **I-Am** from
    instance **389011** (vendor **389**). It also broadcasts an I-Am at start-up.
 2. **Browse the object model** - the device shows six objects: the Device
-   (`Rainbow`), the three sensors, the Access Door (`Cobalt`), and the Network
+   (`Chipkin Example B-ACDC`), the three sensors, the Access Door (`Cobalt`), and the Network
    Port (`Vermilion`). Reading the Device's `Object_List` returns all six.
 3. **Read the Access Door** - ReadProperty `Access Door 1` -> `Present_Value`
    returns `lock` (nothing has commanded it, so it rests at
