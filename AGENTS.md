@@ -64,7 +64,7 @@ The door is commanded over BACnet (WriteProperty), not from the keyboard.
 
 ## Conventions
 
-- Device is named "Rainbow"; objects use the series' colour names (the Access
+- Device is named "Chipkin Example B-ACDC"; objects use the series' colour names (the Access
   Door is "Cobalt"); vendor id 389.
 - Implement **only** the services and objects the B-ACDC profile requires -
   DS-RP-B, DS-WP-B, DS-ACAD-B, DM-DDB-B, DM-DOB-B - but expose **every required
