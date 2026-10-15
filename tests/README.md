@@ -138,3 +138,10 @@ should be.
 With nothing removed: Windows (STATIC build) 56/56 with `door_keys_test.py`
 skipped; Linux (WSL Ubuntu 22.04, the documented SOURCE build, Python 3.10)
 65/65, twice in a row, no `[RETRY]`.
+
+Re-run 2026-10-15 against stack `6.x` @ `64b2cfac5` with `wiretest/` 0.5.0:
+Windows (STATIC build) 56/56 with `door_keys_test.py` skipped; Linux (WSL
+Ubuntu 22.04, SOURCE build, Python 3.10) 65/65 twice, no `[RETRY]`; the stack
+#3642 line still prints `[KNOWN GAP]`. The pulse-expiry row above was re-run at
+this pin on Windows and gave the same 13/20, 14/17, 17/19. The other rows were
+not re-run.

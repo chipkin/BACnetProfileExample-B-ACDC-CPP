@@ -20,7 +20,7 @@ long**. The lock relay and door contact it drives are a
   Statement: every object, every property, and who answers it.
 
 > **Versions:** this document describes **example v1.2.0**, built and verified
-> against **CAS BACnet Stack 6.0.23** (`6.x` @ `e6de4ffd`), at
+> against **CAS BACnet Stack 6.0.23** (`6.x` @ `64b2cfac5`), at
 > **Protocol_Revision 30**, with the vendored `common/` helper at **v3.3.0**.
 > Running the example prints all three - if what it prints disagrees with this
 > line, trust the program and check `CHANGELOG.md`.
@@ -239,7 +239,7 @@ BACnet B-ACDC (Access Control Door Controller) Example - C++ v1.2.0
 CAS BACnet Stack version: 6.0.23.0
 Common helper (common/) version: 3.3.0
 FYI: Listening for BACnet/IP on UDP port 47808 (Network Port 1).
-TX 21 bytes to 192.168.3.255:47808 (broadcast) (Network Port 1)
+TX 21 bytes to 192.168.3.255:47808 (broadcast) (Network Port 1) - Unconfirmed: I-Am
 FYI: Device 389011 ("Chipkin Example B-ACDC") ready. Vendor ID 389. Press 'h' for help.
 FYI: Access Door 1 (Cobalt) starts lock, door shut. WriteProperty its Present_Value (0=lock, 1=unlock, 2=pulseUnlock, 3=extendedPulseUnlock) to command it.
 FYI: the lock relay and door contact are a SIMULATION - keys o / f / p (h for help).
@@ -408,7 +408,7 @@ There is one example repository per standardized device profile in ASHRAE 135-20
 |---|---|---|---|---|---|---|
 | **B-BBMD** Broadcast Management Device | [B-BBMD-CPP](https://github.com/chipkin/BACnetProfileExample-B-BBMD-CPP) | Ask | Ask | Ask | Ask | Ask |
 | **B-ACDC** Access Control Door Controller | [B-ACDC-CPP](https://github.com/chipkin/BACnetProfileExample-B-ACDC-CPP) | Ask | Ask | Ask | Ask | Ask |
-| **B-ACCR** Access Control Credential Reader | [B-ACCR-CPP](https://github.com/chipkin/BACnetProfileExample-B-ACCR-CPP) ⛔ blocked: credential format not reportable (no stack issue yet) | Ask | Ask | Ask | Ask | Ask |
+| **B-ACCR** Access Control Credential Reader | [B-ACCR-CPP](https://github.com/chipkin/BACnetProfileExample-B-ACCR-CPP) ⛔ blocked on [stack #3934](https://github.com/chipkin/cas-bacnet-stack/issues/3934) | Ask | Ask | Ask | Ask | Ask |
 | **B-RTR** Router | [B-RTR-CPP](https://github.com/chipkin/BACnetProfileExample-B-RTR-CPP) | Ask | Ask | Ask | Ask | Ask |
 | **B-GW** Gateway | [B-GW-CPP](https://github.com/chipkin/BACnetProfileExample-B-GW-CPP) | Ask | Ask | Ask | Ask | Ask |
 | **B-DAP** Device Address Proxy | [B-DAP-CPP](https://github.com/chipkin/BACnetProfileExample-B-DAP-CPP) ⛔ blocked on [stack #2032](https://github.com/chipkin/cas-bacnet-stack/issues/2032) | Ask | Ask | Ask | Ask | Ask |

@@ -13,9 +13,31 @@ import struct
 # ---------------------------------------------------------------------------
 
 BVLC_TYPE = 0x81                       # Annex J.2
+BVLC_RESULT = 0x00
+BVLC_WRITE_BROADCAST_DISTRIBUTION_TABLE = 0x01
+BVLC_READ_BROADCAST_DISTRIBUTION_TABLE = 0x02
+BVLC_READ_BROADCAST_DISTRIBUTION_TABLE_ACK = 0x03
 BVLC_FORWARDED_NPDU = 0x04
+BVLC_REGISTER_FOREIGN_DEVICE = 0x05
+BVLC_READ_FOREIGN_DEVICE_TABLE = 0x06
+BVLC_READ_FOREIGN_DEVICE_TABLE_ACK = 0x07
+BVLC_DELETE_FOREIGN_DEVICE_TABLE_ENTRY = 0x08
+BVLC_DISTRIBUTE_BROADCAST_TO_NETWORK = 0x09
 BVLC_ORIGINAL_UNICAST = 0x0A
 BVLC_ORIGINAL_BROADCAST = 0x0B
+
+# The BVLL messages that carry an NPDU (Annex J.2.5, J.2.10, J.2.11, J.2.12).
+BVLC_FUNCTIONS_WITH_NPDU = (BVLC_FORWARDED_NPDU, BVLC_DISTRIBUTE_BROADCAST_TO_NETWORK,
+                            BVLC_ORIGINAL_UNICAST, BVLC_ORIGINAL_BROADCAST)
+
+# BVLC-Result codes (Annex J.2.1.1).
+BVLC_RESULT_SUCCESSFUL_COMPLETION = 0x0000
+BVLC_RESULT_WRITE_BDT_NAK = 0x0010
+BVLC_RESULT_READ_BDT_NAK = 0x0020
+BVLC_RESULT_REGISTER_FOREIGN_DEVICE_NAK = 0x0030
+BVLC_RESULT_READ_FDT_NAK = 0x0040
+BVLC_RESULT_DELETE_FDT_ENTRY_NAK = 0x0050
+BVLC_RESULT_DISTRIBUTE_BROADCAST_TO_NETWORK_NAK = 0x0060
 
 GLOBAL_BROADCAST_NETWORK = 0xFFFF      # cl. 6.2.2
 
@@ -40,6 +62,12 @@ SERVICE_ADD_LIST_ELEMENT = 8
 SERVICE_REMOVE_LIST_ELEMENT = 9
 SERVICE_READ_PROPERTY = 12
 SERVICE_WRITE_PROPERTY = 15
+SERVICE_REINITIALIZE_DEVICE = 20
+
+# ReinitializeDevice 'Reinitialized State of Device' (cl. 16.4.1.1.1).
+REINITIALIZE_COLDSTART = 0
+REINITIALIZE_WARMSTART = 1
+REINITIALIZE_ACTIVATE_CHANGES = 7
 
 # Unconfirmed service choices (cl. 21).
 SERVICE_I_AM = 0
@@ -124,9 +152,46 @@ def mac_text(octets):
 # Encoding
 # ---------------------------------------------------------------------------
 
+def bvll(function, body=b""):
+    """Any Annex J BVLL message: type X'81', `function`, length, then `body`."""
+    return struct.pack(">BBH", BVLC_TYPE, function, 4 + len(body)) + body
+
+
 def bvlc(npdu_octets, broadcast=False):
-    function = BVLC_ORIGINAL_BROADCAST if broadcast else BVLC_ORIGINAL_UNICAST
-    return struct.pack(">BBH", BVLC_TYPE, function, 4 + len(npdu_octets)) + npdu_octets
+    return bvll(BVLC_ORIGINAL_BROADCAST if broadcast else BVLC_ORIGINAL_UNICAST, npdu_octets)
+
+
+def forwarded_npdu(originating_mac, npdu_octets):
+    """Forwarded-NPDU (J.2.5): what a BBMD sends its peers and foreign devices."""
+    return bvll(BVLC_FORWARDED_NPDU, originating_mac + npdu_octets)
+
+
+def distribute_broadcast_to_network(npdu_octets):
+    """Distribute-Broadcast-To-Network (J.2.10): a foreign device's broadcast, sent to its BBMD."""
+    return bvll(BVLC_DISTRIBUTE_BROADCAST_TO_NETWORK, npdu_octets)
+
+
+def register_foreign_device(time_to_live):
+    """Register-Foreign-Device (J.2.6), Time-to-Live in seconds."""
+    return bvll(BVLC_REGISTER_FOREIGN_DEVICE, struct.pack(">H", time_to_live))
+
+
+def read_broadcast_distribution_table():
+    return bvll(BVLC_READ_BROADCAST_DISTRIBUTION_TABLE)
+
+
+def read_foreign_device_table():
+    return bvll(BVLC_READ_FOREIGN_DEVICE_TABLE)
+
+
+def delete_foreign_device_table_entry(entry_mac):
+    """Delete-Foreign-Device-Table-Entry (J.2.9) for the 6-octet B/IP address `entry_mac`."""
+    return bvll(BVLC_DELETE_FOREIGN_DEVICE_TABLE_ENTRY, entry_mac)
+
+
+def write_broadcast_distribution_table(entries):
+    """Write-Broadcast-Distribution-Table (J.2.2); `entries` = [(6-octet B/IP address, 4-octet mask)]."""
+    return bvll(BVLC_WRITE_BROADCAST_DISTRIBUTION_TABLE, b"".join(address + mask for address, mask in entries))
 
 
 def npdu(payload, network_message=None, dnet=None, dadr=b"", snet=None, sadr=b"",
@@ -172,6 +237,12 @@ def context_unsigned(tag, value):
 
 def context_object_id(tag, object_type, instance):
     return bytes([(tag << 4) | 0x08 | 4]) + object_id(object_type, instance)
+
+
+def context_octet_string(tag, octets):
+    if len(octets) < 5:
+        return bytes([(tag << 4) | 0x08 | len(octets)]) + octets
+    return bytes([(tag << 4) | 0x08 | 5, len(octets)]) + octets
 
 
 def opening(tag):
@@ -240,6 +311,15 @@ def write_property_request(invoke_id, object_type, instance, property_identifier
     return confirmed_request(invoke_id, SERVICE_WRITE_PROPERTY, parameters)
 
 
+def reinitialize_device_request(invoke_id, state, password=None):
+    """ReinitializeDevice (cl. 16.4): [0] reinitialized-state-of-device, [1] password (optional)."""
+    parameters = context_unsigned(0, state)   # ENUMERATED: same octets as an unsigned
+    if password is not None:
+        body = b"\x00" + password.encode("utf-8")
+        parameters += (bytes([0x18 | len(body)]) if len(body) < 5 else bytes([0x1D, len(body)])) + body
+    return confirmed_request(invoke_id, SERVICE_REINITIALIZE_DEVICE, parameters)
+
+
 def read_property_ack(invoke_id, object_type, instance, property_identifier, value_octets):
     return (bytes([0x30, invoke_id, SERVICE_READ_PROPERTY]) +
             context_object_id(0, object_type, instance) + context_unsigned(1, property_identifier) +
@@ -290,6 +370,9 @@ class Frame:
         self.raw = data
         self.source = source           # (ip, udp port) the datagram came from
         self.bvlc_function = None
+        self.bvll_data = b""           # what follows the 4-octet BVLC header (J.2)
+        self.originating_mac = b""     # a Forwarded-NPDU's B/IP Address of Originating Device (J.2.5)
+        self.has_npdu = False          # False for BVLL-only messages (BVLC-Result, table reads, ...)
         self.snet = None
         self.sadr = b""
         self.dnet = None
@@ -300,15 +383,20 @@ class Frame:
         self.ok = self._decode(data)
 
     def _decode(self, data):
-        if len(data) < 6 or data[0] != BVLC_TYPE:
+        if len(data) < 4 or data[0] != BVLC_TYPE:
             return False
         self.bvlc_function = data[1]
+        self.bvll_data = data[4:]
+        if self.bvlc_function not in BVLC_FUNCTIONS_WITH_NPDU:
+            return True                # a BVLL-only message: read it with result_code / bdt_entries / fdt_entries
         offset = 4
         if self.bvlc_function == BVLC_FORWARDED_NPDU:
+            self.originating_mac = data[4:10]
             offset += 6
         octets = data[offset:]
         if len(octets) < 2 or octets[0] != 0x01:
             return False
+        self.has_npdu = True
         control = octets[1]
         self.expecting_reply = bool(control & 0x04)
         position = 2
@@ -354,12 +442,37 @@ class Frame:
             return self.payload[1]
         return None
 
+    @property
+    def result_code(self):
+        """A BVLC-Result's result code (J.2.1.1), else None."""
+        if self.bvlc_function == BVLC_RESULT and len(self.bvll_data) >= 2:
+            return struct.unpack(">H", self.bvll_data[:2])[0]
+        return None
+
+    def bdt_entries(self):
+        """A Read-Broadcast-Distribution-Table-Ack's entries (J.2.4) as [(B/IP address text, mask text)]."""
+        if self.bvlc_function != BVLC_READ_BROADCAST_DISTRIBUTION_TABLE_ACK:
+            return None
+        return [(mac_text(self.bvll_data[offset:offset + 6]), socket.inet_ntoa(self.bvll_data[offset + 6:offset + 10]))
+                for offset in range(0, len(self.bvll_data) - 9, 10)]
+
+    def fdt_entries(self):
+        """A Read-Foreign-Device-Table-Ack's entries (J.2.8) as [(B/IP address text, time-to-live, seconds remaining)]."""
+        if self.bvlc_function != BVLC_READ_FOREIGN_DEVICE_TABLE_ACK:
+            return None
+        return [(mac_text(self.bvll_data[offset:offset + 6]),) + struct.unpack(">HH", self.bvll_data[offset + 6:offset + 10])
+                for offset in range(0, len(self.bvll_data) - 9, 10)]
+
     def networks(self):
         """The network numbers an I-Am-Router-To-Network lists (cl. 6.4.2)."""
         return [struct.unpack(">H", self.payload[offset:offset + 2])[0] for offset in range(0, len(self.payload) - 1, 2)]
 
     def describe(self):
         text = f"from {self.source[0]}:{self.source[1]}"
+        if not self.has_npdu:
+            return text + f" BVLL function=0x{self.bvlc_function:02X} data={self.bvll_data.hex()}"
+        if self.originating_mac:
+            text += f" Forwarded-NPDU originating={mac_text(self.originating_mac)}"
         if self.snet is not None:
             text += f" SNET={self.snet} SADR={mac_text(self.sadr)}"
         if self.dnet is not None:

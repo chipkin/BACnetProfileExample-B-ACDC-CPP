@@ -38,15 +38,25 @@ bar, `docs/GLOSSARY.md` in the example series).
   forced-open and open-too-long Failure Modes, and the Simulation keys. Each
   check verified to fail with its feature removed (`tests/README.md`). CI runs
   them on Linux after the smoke test.
-- **`wiretest/` 0.4.0** vendored (the series' shared harness: B-GW's 0.3.0 plus an
-  opt-in visible `Client` retry, `Program.press`, `decoded_values`,
-  `application_boolean` and the absolute exe path).
+- **`wiretest/` 0.5.0** vendored verbatim from B-BBMD-CPP `75aedd8` (the series'
+  shared harness: 0.4.0 - B-GW's 0.3.0 plus an opt-in visible `Client` retry,
+  `Program.press`, `decoded_values`, `application_boolean` and the absolute exe
+  path - plus B-BBMD's additive 0.5.0: Annex J BVLL builders, BVLL-only frame
+  decoding, `Endpoint.ip` / `mac` / `clear()`, and the Windows
+  `ConnectionResetError` fixes). The door tests needed no change.
 - `TODO.md`: the one known gap - the stack answers an out-of-range
   `Present_Value` with Reject (OTHER), not Error VALUE_OUT_OF_RANGE (stack
   #3642).
 
 ### Changed
 
+- **Stack Pin moved `e6de4ffd` -> `6.x` @ `64b2cfac5`** (still reports 6.0.23),
+  per docs/adr/0001. `64b2cfac5` is the promotion of `issues/runbook` that
+  carries stack #3850, so the `6.x` tip links customer builds again. No source
+  change. The Wire Tests pass unchanged at the new pin on Windows and Linux;
+  the one `[KNOWN GAP]` (stack #3642, still open) still prints as a gap, so no
+  check changed. The pulse-expiry mutation was re-run at this pin and is still
+  caught (13/20, 14/17, 17/19).
 - **`common/` 3.0.0 -> 3.3.0**: 3.1.0 (`k`, B-GW) and 3.2.0 (broadcast send, B-RTR)
   from the series line, plus 3.3.0's `KeyCommand::ContactToggle` (`o`),
   `ForceOpen` (`f`) and `BadgePulse` (`p`) - committed in

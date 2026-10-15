@@ -9,7 +9,8 @@ upstream - turn its check into a counted one and delete the entry here.
 
 - **Where:** the CAS BACnet Stack -
   [chipkin/cas-bacnet-stack#3642](https://github.com/chipkin/cas-bacnet-stack/issues/3642)
-  (owner question #3799).
+  (owner question #3799). Still open on 2026-10-15; at Stack Pin `6.x` @
+  `64b2cfac5` the Wire Test still prints `[KNOWN GAP]`.
 - **What:** WriteProperty of Access Door `Present_Value` = 4 (or any value that is
   not a BACnetDoorValue) is answered with a **Reject, reason OTHER**, produced
   while the stack decodes the request. ANSI/ASHRAE 135-2024 clause 15.9.1.3.1
