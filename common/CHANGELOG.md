@@ -12,6 +12,27 @@ entry here, and must then be re-copied into **every** example in the series.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the folder adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2026-10-14
+
+### Added
+
+- `KeyCommand::SimulatedPeerToggle` on the `k` key: kill / revive a simulated
+  Peer, so an example can show its Failure Mode on demand (the series'
+  Profile-functional bar). First used by `BACnetProfileExample-B-GW-CPP` to
+  take a slave on its simulated foreign bus offline and back. Registered in
+  the series' `docs/menu-keys.md`. Additive: no existing key or symbol
+  changes, so an example that does not handle it ignores the key.
+- `KeyCommand::ContactToggle` (`o`), `KeyCommand::ForceOpen` (`f`) and
+  `KeyCommand::BadgePulse` (`p`). First used by
+  `BACnetProfileExample-B-ACDC-CPP`'s door Simulation (open/shut the simulated
+  door contact, force the door open, a local badge pulse-unlock); the names are
+  generic so any example simulating a contact or a badge reader reuses them.
+  Registered in `docs/menu-keys.md`. Additive, like `k`.
+  `PrintInteractiveCommands()` is unchanged: an example that handles any of
+  these keys lists them itself after `PrintHelp()`.
+- (B-GW and B-ACDC each claimed 3.1.0 for their own keys on the same day; this
+  one 3.1.0 carries both sets, so every copy of 3.1.0 is the same.)
+
 ## [3.0.0] - 2026-09-22
 
 ### Added
