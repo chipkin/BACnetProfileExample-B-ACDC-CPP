@@ -23,7 +23,19 @@
 // so this example deliberately does not enable any of them. That is the whole
 // point of a profile example: implement exactly what the profile asks for,
 // nothing more. (A door controller that ALSO reports access events is a
-// B-ACC / B-AACC - a different, larger profile with its own example.)
+// B-ACC / B-AACC - a different, larger profile with its own example.) The door
+// still KNOWS when it is in trouble - its Door_Alarm_State property reads
+// forcedOpen or doorOpenTooLong - it just does not send event notifications
+// about it.
+//
+// THE PROFILE FUNCTION - what makes this a door controller and not just a device
+// with a door-shaped object - is in section 1b, "The door Simulation", and the
+// tick in main(): a lock relay that follows the commanded Present_Value, a
+// door-position contact, pulse unlocks that RE-LOCK on their own after
+// Door_Pulse_Time (clause 12.26.4 / 12.26.16), and the two classic door alarms,
+// forced open and held open too long (12.26.19 / 12.26.20). The relay and the
+// contact are SIMULATION: on a real controller they are a GPIO output and a GPIO
+// input; everything BACnet does with them is real.
 //
 // The device keeps the three read-only sensor objects from B-SS and adds the one
 // object this profile exists for. Each object has a colour name (the convention
@@ -33,7 +45,7 @@
 //     Analog Input  1        "Bronze"     (REAL, degrees Celsius; read-only)
 //     Binary Input  1        "Emerald"    (active / inactive; read-only)
 //     Multi-State Input 1    "Hot Pink"   (state 1..3; read-only)
-//     Access Door 1          "Cobalt"     (lock / unlock; WRITABLE, commandable)
+//     Access Door 1          "Cobalt"     (lock / unlock / pulse; commandable, re-locks itself)
 //     Network Port 1         "Vermilion"  (the BACnet/IP port - required)
 //
 // THE ACCESS DOOR IS COMMANDABLE. This is the key thing to understand, and it is
@@ -63,9 +75,10 @@
 // Door_Extended_Pulse_Time, and Door_Open_Too_Long_Time - and this example serves
 // all three.
 //
-// Interactive keys (handled by the shared helper): h = help, q = quit,
-// up/down = nudge Analog Input 1 by +/-1.1. Command line: --port <n>,
-// --deviceID <n>.
+// Interactive keys (read by the shared helper): h = help, q = quit,
+// up/down = nudge Analog Input 1 by +/-1.1, and the door Simulation's keys:
+// o = open / close the door, f = force the door open, p = present a badge (a
+// local pulseUnlock at priority 8). Command line: --port <n>, --deviceID <n>.
 //
 // All the UDP/stack plumbing lives in common/CASExampleHelper so this file can
 // stay focused on the BACnet logic.
@@ -80,6 +93,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <string> // std::string - g_firmwareRevision, built at runtime; see its own comment below
+#include <chrono> // std::chrono::steady_clock - the door's pulse and open-too-long timers
 
 #if defined(_WIN32)
 #include <windows.h> // Sleep()
@@ -106,6 +120,7 @@ static const uint16_t OBJECT_TYPE_ACCESS_DOOR = 30;
 // -- Access Door property identifiers (Property_Identifier enumeration) ------
 //    Full list: submodules/cas-bacnet-stack/source/BACnetPropertyIdentifier.h
 static const uint32_t PROPERTY_IDENTIFIER_RELIABILITY = 103;
+static const uint32_t PROPERTY_IDENTIFIER_DOOR_ALARM_STATE = 226;
 static const uint32_t PROPERTY_IDENTIFIER_DOOR_EXTENDED_PULSE_TIME = 227;
 static const uint32_t PROPERTY_IDENTIFIER_DOOR_OPEN_TOO_LONG_TIME = 229;
 static const uint32_t PROPERTY_IDENTIFIER_DOOR_PULSE_TIME = 230;
@@ -124,14 +139,29 @@ static const uint32_t DOOR_VALUE_EXTENDED_PULSE_UNLOCK = 3; // longer momentary 
 // -- BACnetDoorStatus (optional Door_Status) - is the door physically shut? --
 //    Full list: submodules/cas-bacnet-stack/source/BACnetDoorStatus.h
 static const uint32_t DOOR_STATUS_CLOSED = 0;
+static const uint32_t DOOR_STATUS_OPENED = 1;
+static const uint32_t DOOR_STATUS_UNUSED = 4;
+static const uint32_t DOOR_STATUS_LAST = 9;          // limitedOpened, the highest ASHRAE value
 
 // -- BACnetLockStatus (optional Lock_Status) - is the latch thrown? ----------
 static const uint32_t LOCK_STATUS_LOCKED = 0;
 static const uint32_t LOCK_STATUS_UNLOCKED = 1;
+static const uint32_t LOCK_STATUS_UNUSED = 3;
+static const uint32_t LOCK_STATUS_LAST = 4;          // unknown
 
 // -- BACnetDoorSecuredStatus (optional Secured_Status) ----------------------
 static const uint32_t SECURED_STATUS_SECURED = 0;
 static const uint32_t SECURED_STATUS_UNSECURED = 1;
+
+// -- BACnetDoorAlarmState (optional Door_Alarm_State) - is the door in trouble?
+//    Full list: submodules/cas-bacnet-stack/source/BACnetDoorAlarmState.h
+static const uint32_t DOOR_ALARM_STATE_NORMAL = 0;
+static const uint32_t DOOR_ALARM_STATE_DOOR_OPEN_TOO_LONG = 2;
+static const uint32_t DOOR_ALARM_STATE_FORCED_OPEN = 3;
+static const uint32_t DOOR_ALARM_STATE_LAST = 8;     // egressOpen
+
+// -- BACnetErrorCode values this example names that common/ does not ---------
+static const uint32_t ERROR_CODE_WRITE_ACCESS_DENIED = 40;
 
 // -- BACnetReliability - required on an Access Door -------------------------
 //    Full list: submodules/cas-bacnet-stack/source/BACnetReliability.h
@@ -141,7 +171,7 @@ static const uint32_t RELIABILITY_NO_FAULT_DETECTED = 0;
 // 1. Example + device configuration
 // -----------------------------------------------------------------------------
 static const char* APP_NAME = "BACnet B-ACDC (Access Control Door Controller) Example - C++";
-static const char* APP_VERSION = "1.1.2";
+static const char* APP_VERSION = "1.2.0";
 
 // The device instance. BACnet requires this to be configurable, so it defaults
 // to 389011 (each profile example in the series has its own default, so several
@@ -180,7 +210,8 @@ static const char* DEVICE_NAME = "Chipkin Example B-ACDC";
 // actually is; this string describes this tutorial.
 static const char* DEVICE_DESCRIPTION =
     "Chipkin CAS BACnet Stack example - B-ACDC (Access Control Door Controller) profile. "
-    "Demonstrates DS-ACAD-B: an Access Door object locked and unlocked with WriteProperty.";
+    "Demonstrates DS-ACAD-B: an Access Door that locks, unlocks, pulse-unlocks and re-locks "
+    "itself, with a simulated lock relay and door contact.";
 
 // Device identity strings (read by clients, and used to populate I-Am).
 //   VENDOR_NAME - your company name; it must match VENDOR_IDENTIFIER above.
@@ -236,16 +267,20 @@ static const uint32_t ACCESS_DOOR_INSTANCE = 1;        // "Cobalt"
 static const uint32_t BACNET_PRIORITY_ARRAY_SIZE = 16;
 
 // The Access Door's three REQUIRED timing properties, in tenths of a second (the
-// units BACnet defines for them - clause 12.3). A real door controller would
-// drive its strike/latch hardware with exactly these numbers:
-//   Door_Pulse_Time          - how long a pulseUnlock holds the door unlocked.
+// units BACnet defines for them - clause 12.26.16, .17 and .19). The door
+// Simulation (section 1b) runs on exactly these numbers:
+//   Door_Pulse_Time          - how long a pulseUnlock holds the door unlocked
+//                              before the controller relinquishes it.
 //   Door_Extended_Pulse_Time - the same, for extendedPulseUnlock (e.g. an
 //                              accessibility door that must stay open longer).
-//   Door_Open_Too_Long_Time  - how long the door may stand open before the
-//                              controller considers it a problem.
-static const uint32_t DOOR_PULSE_TIME = 30;            // 3.0 seconds
-static const uint32_t DOOR_EXTENDED_PULSE_TIME = 100;  // 10.0 seconds
-static const uint32_t DOOR_OPEN_TOO_LONG_TIME = 300;   // 30.0 seconds
+//   Door_Open_Too_Long_Time  - how long the door may stand open after it was
+//                              re-locked before Door_Alarm_State reads
+//                              doorOpenTooLong.
+// They are WRITABLE (WriteProperty, Unsigned): an installer sets them per door,
+// and the Wire Tests shorten them so a test takes seconds, not minutes.
+static uint32_t g_doorPulseTime = 30;            // 3.0 seconds
+static uint32_t g_doorExtendedPulseTime = 100;   // 10.0 seconds
+static uint32_t g_doorOpenTooLongTime = 300;     // 30.0 seconds
 
 // A BACnet commandable value: a 16-slot Priority_Array plus a Relinquish_Default.
 // Each slot is either null (relinquished) or holds a commanded value. A real
@@ -312,8 +347,9 @@ static bool ReadPrioritySlot(const Commandable* c, uint32_t propertyIdentifier,
 }
 
 // Resolve the door's effective Present_Value the same way the stack does: the
-// highest-priority commanded slot wins, otherwise Relinquish_Default. We only
-// need this to PRINT the door's state - the stack serves Present_Value itself.
+// highest-priority commanded slot wins, otherwise Relinquish_Default. The stack
+// serves Present_Value itself; the application needs the same answer to drive
+// the door hardware (the lock relay in section 1b follows it).
 static uint32_t ResolveDoorValue(const Commandable* c) {
     for (uint32_t i = 0; i < BACNET_PRIORITY_ARRAY_SIZE; i++) {
         if (c->isSet[i]) {
@@ -332,6 +368,306 @@ static const char* DoorValueName(uint32_t doorValue) {
         case DOOR_VALUE_EXTENDED_PULSE_UNLOCK: return "extendedPulseUnlock";
         default:                               return "?";
     }
+}
+
+// -----------------------------------------------------------------------------
+// 1b. The door Simulation - the Profile Function
+//
+// A B-ACDC's job is to lock a door, unlock it on command, and re-lock it again.
+// The BACnet half of that is the commandable Present_Value above. This section is
+// the other half: what a real controller does with the result.
+//
+//   SIMULATION (stands in for hardware; outside the BACnet Surface):
+//     g_lockRelayUnlocked  - the strike/maglock relay. A GPIO OUTPUT on a real
+//                            controller. It follows the commanded Present_Value.
+//     g_doorContactOpen    - the door-position contact (a reed switch). A GPIO
+//                            INPUT on a real controller. Here the keyboard moves
+//                            it: 'o' opens/closes the door, 'f' forces it open.
+//
+//   REAL BACnet behaviour built on them (clause 12.26 of ANSI/ASHRAE 135-2024):
+//     - pulseUnlock / extendedPulseUnlock are RELINQUISHED at their own priority
+//       after Door_Pulse_Time / Door_Extended_Pulse_Time (12.26.4, 12.26.16,
+//       12.26.17). The door re-locks itself. That is the profile's point.
+//     - a pulse written below a higher-priority command is relinquished
+//       immediately (12.26.4).
+//     - Door_Status reports the contact, Lock_Status the relay, Secured_Status
+//       is derived from them exactly as 12.26.14 lists.
+//     - Door_Alarm_State reads forcedOpen when the door opens while it is
+//       commanded locked, and doorOpenTooLong when it is still open
+//       Door_Open_Too_Long_Time after the door re-locked (12.26.19, 12.26.20).
+//     - Out_Of_Service = TRUE decouples the object from the hardware: the relay
+//       stops following Present_Value, and Door_Status, Lock_Status and
+//       Door_Alarm_State become writable, and the alarm logic responds to the
+//       written values "as if those changes had occurred to the physical door"
+//       (12.26.9 (c), (d) and Table 12-30 footnote 1). That is how a
+//       commissioning tool - or this example's Wire Tests - exercises the door
+//       alarms without anyone standing at the door.
+//
+// Everything runs from DoorTick(), called once per pass of the main loop next to
+// BACnetStack_Tick(). Nothing here blocks, and nothing here touches the network:
+// the stack answers reads from the callbacks in section 2, which read this state.
+// -----------------------------------------------------------------------------
+
+// Milliseconds on a clock that never jumps (wall-clock changes do not shorten a
+// pulse). Only differences between two readings are ever used.
+static uint64_t NowMilliseconds() {
+    return (uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+// --- The simulated hardware ---------------------------------------------------
+static bool g_lockRelayUnlocked = false; // the lock relay: false = locked (the safe state)
+static bool g_doorContactOpen = false;   // the door contact: false = door shut
+
+// When each priority slot's pulse expires, in NowMilliseconds() terms; 0 = the
+// slot holds no running pulse. Kept beside g_accessDoor rather than inside the
+// Commandable struct, so that struct stays identical to the B-SA example's.
+static uint64_t g_pulseExpiresAtMs[16] = { 0 };
+
+// --- Out_Of_Service (12.26.9) ------------------------------------------------
+// While TRUE, the reported Door_Status / Lock_Status come from these written
+// values instead of the hardware, and the relay holds where it was.
+static bool g_doorOutOfService = false;
+static uint32_t g_outOfServiceDoorStatus = DOOR_STATUS_CLOSED;
+static uint32_t g_outOfServiceLockStatus = LOCK_STATUS_LOCKED;
+static bool g_outOfServiceAlarmStateWritten = false;  // Door_Alarm_State written while out of service?
+static uint32_t g_outOfServiceAlarmState = DOOR_ALARM_STATE_NORMAL;
+
+// --- Door alarm bookkeeping (12.26.19 / 12.26.20) -----------------------------
+static uint32_t g_doorAlarmState = DOOR_ALARM_STATE_NORMAL;
+static uint32_t g_lastDoorValue = DOOR_VALUE_LOCK;       // Present_Value at the last tick
+static uint32_t g_doorValueBeforeLock = DOOR_VALUE_LOCK; // what Present_Value was before it last became lock
+static uint64_t g_lockedAtMs = 0;                        // when Present_Value last became lock
+static bool g_doorWasOpen = false;                       // the reported door state at the last tick
+static uint64_t g_doorOpenedAtMs = 0;                    // when the door last opened
+
+// What the BACnet properties report. Out of service, the written values win.
+static uint32_t ReportedDoorStatus() {
+    if (g_doorOutOfService) {
+        return g_outOfServiceDoorStatus;
+    }
+    return g_doorContactOpen ? DOOR_STATUS_OPENED : DOOR_STATUS_CLOSED;
+}
+
+static uint32_t ReportedLockStatus() {
+    if (g_doorOutOfService) {
+        return g_outOfServiceLockStatus;
+    }
+    return g_lockRelayUnlocked ? LOCK_STATUS_UNLOCKED : LOCK_STATUS_LOCKED;
+}
+
+static uint32_t ReportedDoorAlarmState() {
+    if (g_doorOutOfService && g_outOfServiceAlarmStateWritten) {
+        return g_outOfServiceAlarmState;
+    }
+    return g_doorAlarmState;
+}
+
+// Secured_Status, word for word from 12.26.14: SECURED if, and only if, (a) the
+// IN_ALARM flag is FALSE - always, since this object does no event reporting and
+// its Event_State is NORMAL (12.26.7) - (b) there is no Masked_Alarm_Values -
+// this object has none - (c) Door_Status is CLOSED or UNUSED, (d) Present_Value
+// is LOCK, and (e) Lock_Status is LOCKED or UNUSED. Otherwise UNSECURED.
+static uint32_t ReportedSecuredStatus() {
+    const uint32_t doorStatus = ReportedDoorStatus();
+    const uint32_t lockStatus = ReportedLockStatus();
+    const bool doorShut = (doorStatus == DOOR_STATUS_CLOSED || doorStatus == DOOR_STATUS_UNUSED);
+    const bool commandedLocked = (ResolveDoorValue(&g_accessDoor) == DOOR_VALUE_LOCK);
+    const bool latchLocked = (lockStatus == LOCK_STATUS_LOCKED || lockStatus == LOCK_STATUS_UNUSED);
+    return (doorShut && commandedLocked && latchLocked) ? SECURED_STATUS_SECURED : SECURED_STATUS_UNSECURED;
+}
+
+static const char* DoorStatusName(uint32_t doorStatus) {
+    switch (doorStatus) {
+        case DOOR_STATUS_CLOSED: return "closed";
+        case DOOR_STATUS_OPENED: return "opened";
+        case DOOR_STATUS_UNUSED: return "unused";
+        default:                 return "other";
+    }
+}
+
+static const char* LockStatusName(uint32_t lockStatus) {
+    switch (lockStatus) {
+        case LOCK_STATUS_LOCKED:   return "locked";
+        case LOCK_STATUS_UNLOCKED: return "unlocked";
+        case LOCK_STATUS_UNUSED:   return "unused";
+        default:                   return "other";
+    }
+}
+
+static const char* DoorAlarmStateName(uint32_t alarmState) {
+    switch (alarmState) {
+        case DOOR_ALARM_STATE_NORMAL:             return "normal";
+        case DOOR_ALARM_STATE_DOOR_OPEN_TOO_LONG: return "doorOpenTooLong";
+        case DOOR_ALARM_STATE_FORCED_OPEN:        return "forcedOpen";
+        default:                                  return "other";
+    }
+}
+
+// Command the door at a priority - the one path every command takes, whether it
+// came over BACnet (SetPropertyEnumerated) or from the local badge reader (the
+// 'p' key). Applies the two pulse rules of 12.26.4: a pulse starts its own
+// countdown, and a pulse written while a HIGHER priority is commanding the door
+// "will be relinquished immediately". `source` is only for the console log.
+static void CommandDoor(uint8_t priority, uint32_t doorValue, const char* source) {
+    const uint8_t slot = EffectivePriority(priority);
+    const bool isPulse = (doorValue == DOOR_VALUE_PULSE_UNLOCK ||
+                          doorValue == DOOR_VALUE_EXTENDED_PULSE_UNLOCK);
+    if (isPulse) {
+        for (uint8_t higherSlot = 1; higherSlot < slot; higherSlot++) {
+            if (g_accessDoor.isSet[higherSlot - 1]) {
+                CommandRelinquish(&g_accessDoor, slot);
+                g_pulseExpiresAtMs[slot - 1] = 0;
+                printf("%s: Access Door 1 (Cobalt) <- %s @ priority %u - relinquished immediately, "
+                       "priority %u is commanding the door (12.26.4)\n",
+                       source, DoorValueName(doorValue), slot, higherSlot);
+                return;
+            }
+        }
+    }
+    CommandWrite(&g_accessDoor, slot, (double)doorValue);
+    if (isPulse) {
+        const uint32_t tenthsOfASecond = (doorValue == DOOR_VALUE_PULSE_UNLOCK)
+                                             ? g_doorPulseTime : g_doorExtendedPulseTime;
+        g_pulseExpiresAtMs[slot - 1] = NowMilliseconds() + (uint64_t)tenthsOfASecond * 100;
+        printf("%s: Access Door 1 (Cobalt) <- %s @ priority %u, re-locks in %.1f s\n",
+               source, DoorValueName(doorValue), slot, tenthsOfASecond / 10.0);
+    } else {
+        g_pulseExpiresAtMs[slot - 1] = 0;
+        printf("%s: Access Door 1 (Cobalt) <- %s @ priority %u\n",
+               source, DoorValueName(doorValue), slot);
+    }
+}
+
+// Relinquish a priority slot (a WriteProperty of NULL), cancelling any pulse in it.
+static void RelinquishDoor(uint8_t priority) {
+    const uint8_t slot = EffectivePriority(priority);
+    CommandRelinquish(&g_accessDoor, slot);
+    g_pulseExpiresAtMs[slot - 1] = 0;
+    printf("WriteProperty: relinquished Access Door 1 (Cobalt) @ priority %u\n", slot);
+}
+
+// Out_Of_Service on or off. Going out of service freezes the hardware view: the
+// written Door_Status / Lock_Status start from what the hardware reads now.
+static void SetDoorOutOfService(bool outOfService) {
+    if (outOfService == g_doorOutOfService) {
+        return;
+    }
+    if (outOfService) {
+        g_outOfServiceDoorStatus = ReportedDoorStatus();
+        g_outOfServiceLockStatus = ReportedLockStatus();
+    }
+    g_outOfServiceAlarmStateWritten = false;
+    g_doorOutOfService = outOfService;
+    printf("Access Door 1 (Cobalt): Out_Of_Service %s%s\n", outOfService ? "TRUE" : "FALSE",
+           outOfService ? " - the relay holds; Door_Status, Lock_Status and Door_Alarm_State are now writable"
+                        : " - back on the hardware");
+}
+
+// One pass of the door. Called from the main loop on every tick.
+static void DoorTick() {
+    const uint64_t now = NowMilliseconds();
+
+    // 1. Pulse expiry (12.26.16 / 12.26.17): "the Present_Value shall be
+    //    automatically relinquished at the priority that established the
+    //    PULSE_UNLOCK command". Every slot is checked, not only the winning one.
+    for (uint8_t slot = 1; slot <= BACNET_PRIORITY_ARRAY_SIZE; slot++) {
+        if (g_pulseExpiresAtMs[slot - 1] != 0 && now >= g_pulseExpiresAtMs[slot - 1]) {
+            const uint32_t expiredValue = (uint32_t)g_accessDoor.value[slot - 1];
+            CommandRelinquish(&g_accessDoor, slot);
+            g_pulseExpiresAtMs[slot - 1] = 0;
+            printf("Access Door 1 (Cobalt): %s @ priority %u expired - relinquished (12.26.16)\n",
+                   DoorValueName(expiredValue), slot);
+        }
+    }
+
+    // 2. Present_Value changes. Remember what the door was before it became lock:
+    //    the open-too-long rule (12.26.19) depends on it.
+    const uint32_t doorValue = ResolveDoorValue(&g_accessDoor);
+    if (doorValue != g_lastDoorValue) {
+        printf("Access Door 1 (Cobalt): Present_Value %s -> %s\n",
+               DoorValueName(g_lastDoorValue), DoorValueName(doorValue));
+        if (doorValue == DOOR_VALUE_LOCK) {
+            g_doorValueBeforeLock = g_lastDoorValue;
+            g_lockedAtMs = now;
+        }
+        g_lastDoorValue = doorValue;
+    }
+
+    // 3. The lock relay follows Present_Value - unless the object is out of
+    //    service, when it is decoupled and holds (12.26.9 (a)).
+    if (!g_doorOutOfService) {
+        const bool relayShouldUnlock = (doorValue != DOOR_VALUE_LOCK);
+        if (relayShouldUnlock != g_lockRelayUnlocked) {
+            g_lockRelayUnlocked = relayShouldUnlock;
+            printf("Simulation: lock relay %s -> Lock_Status %s\n",
+                   g_lockRelayUnlocked ? "energised (door unlocked)" : "released (door locked)",
+                   LockStatusName(ReportedLockStatus()));
+        }
+    }
+
+    // 4. Door open / shut edges, from the reported Door_Status (so a value
+    //    written while out of service counts exactly like the contact).
+    const bool doorOpen = (ReportedDoorStatus() == DOOR_STATUS_OPENED);
+    bool openedWhileLocked = false;
+    if (doorOpen != g_doorWasOpen) {
+        g_doorWasOpen = doorOpen;
+        if (doorOpen) {
+            g_doorOpenedAtMs = now;
+            openedWhileLocked = (doorValue == DOOR_VALUE_LOCK);
+        }
+        printf("Access Door 1 (Cobalt): Door_Status %s\n", DoorStatusName(ReportedDoorStatus()));
+    }
+
+    // 5. Door_Alarm_State. When to leave NORMAL is "a local matter" (12.26.20);
+    //    this controller's rules are:
+    //      forcedOpen      - the door opened while Present_Value was LOCK, i.e.
+    //                        nobody was granted access. Holds until it shuts.
+    //      doorOpenTooLong - Present_Value is LOCK and the door has stayed open
+    //                        Door_Open_Too_Long_Time after the pulse that let
+    //                        someone through expired (12.26.19 (a), (b)), or
+    //                        after it was opened if it was plainly UNLOCKed (c).
+    //      normal          - the door is shut, or it is open while legitimately
+    //                        unlocked.
+    uint32_t alarmState = g_doorAlarmState;
+    if (!doorOpen) {
+        alarmState = DOOR_ALARM_STATE_NORMAL;
+    } else if (openedWhileLocked) {
+        alarmState = DOOR_ALARM_STATE_FORCED_OPEN;
+    } else if (g_doorAlarmState == DOOR_ALARM_STATE_FORCED_OPEN) {
+        // stays forced open until the door shuts
+    } else if (doorValue != DOOR_VALUE_LOCK) {
+        alarmState = DOOR_ALARM_STATE_NORMAL;
+    } else {
+        const uint64_t openTooLongFrom =
+            (g_doorValueBeforeLock == DOOR_VALUE_UNLOCK) ? g_doorOpenedAtMs
+            : (g_lockedAtMs > g_doorOpenedAtMs ? g_lockedAtMs : g_doorOpenedAtMs);
+        if (now - openTooLongFrom >= (uint64_t)g_doorOpenTooLongTime * 100) {
+            alarmState = DOOR_ALARM_STATE_DOOR_OPEN_TOO_LONG;
+        }
+    }
+    if (alarmState != g_doorAlarmState) {
+        printf("Access Door 1 (Cobalt): Door_Alarm_State %s -> %s\n",
+               DoorAlarmStateName(g_doorAlarmState), DoorAlarmStateName(alarmState));
+        g_doorAlarmState = alarmState;
+    }
+
+    // 6. Secured_Status is derived on every read; log it when it changes.
+    static uint32_t lastSecuredStatus = SECURED_STATUS_SECURED;
+    const uint32_t securedStatus = ReportedSecuredStatus();
+    if (securedStatus != lastSecuredStatus) {
+        lastSecuredStatus = securedStatus;
+        printf("Access Door 1 (Cobalt): Secured_Status %s\n",
+               securedStatus == SECURED_STATUS_SECURED ? "secured" : "unsecured");
+    }
+}
+
+// The door Simulation's keys, listed after the shared help text.
+static void PrintDoorKeys() {
+    printf("Door Simulation:\n");
+    printf("  o     - open / close the door (the door contact)\n");
+    printf("  f     - force the door open (opens it whether or not it is unlocked)\n");
+    printf("  p     - present a badge: pulseUnlock at priority 8 for Door_Pulse_Time\n");
 }
 
 // -----------------------------------------------------------------------------
@@ -486,23 +822,26 @@ bool GetPropertyEnumerated(const uint32_t deviceInstance, const uint16_t objectT
             *value = RELIABILITY_NO_FAULT_DETECTED;
             return true;
         }
-        // The three status properties below are OPTIONAL (clause 12.3). We expose
-        // them because they are what makes a door example legible: they report the
-        // door's real-world state, as opposed to what it has been commanded to do.
-        // We derive them from the commanded value; a real controller would read
-        // them from door hardware (a reed switch, a latch monitor).
-        const uint32_t doorValue = ResolveDoorValue(c);
-        const bool isLocked = (doorValue == DOOR_VALUE_LOCK);
+        // The four status properties below are OPTIONAL (clause 12.26). We
+        // expose them because they are what makes a door controller useful: they
+        // report what the door IS, next to what it was COMMANDED to be (the
+        // Present_Value). They come from the door Simulation in section 1b - the
+        // contact, the relay, and the alarm logic - or, while Out_Of_Service is
+        // TRUE, from the values a client wrote.
         if (propertyIdentifier == PROPERTY_IDENTIFIER_DOOR_STATUS) {
-            *value = DOOR_STATUS_CLOSED; // this simulated door is always shut
+            *value = ReportedDoorStatus();
             return true;
         }
         if (propertyIdentifier == PROPERTY_IDENTIFIER_LOCK_STATUS) {
-            *value = isLocked ? LOCK_STATUS_LOCKED : LOCK_STATUS_UNLOCKED;
+            *value = ReportedLockStatus();
             return true;
         }
         if (propertyIdentifier == PROPERTY_IDENTIFIER_SECURED_STATUS) {
-            *value = isLocked ? SECURED_STATUS_SECURED : SECURED_STATUS_UNSECURED;
+            *value = ReportedSecuredStatus();
+            return true;
+        }
+        if (propertyIdentifier == PROPERTY_IDENTIFIER_DOOR_ALARM_STATE) {
+            *value = ReportedDoorAlarmState();
             return true;
         }
     }
@@ -564,13 +903,13 @@ bool GetPropertyUnsignedInteger(const uint32_t deviceInstance, const uint16_t ob
     if (objectType == OBJECT_TYPE_ACCESS_DOOR && objectInstance == ACCESS_DOOR_INSTANCE) {
         switch (propertyIdentifier) {
             case PROPERTY_IDENTIFIER_DOOR_PULSE_TIME:
-                *value = DOOR_PULSE_TIME;
+                *value = g_doorPulseTime;
                 return true;
             case PROPERTY_IDENTIFIER_DOOR_EXTENDED_PULSE_TIME:
-                *value = DOOR_EXTENDED_PULSE_TIME;
+                *value = g_doorExtendedPulseTime;
                 return true;
             case PROPERTY_IDENTIFIER_DOOR_OPEN_TOO_LONG_TIME:
-                *value = DOOR_OPEN_TOO_LONG_TIME;
+                *value = g_doorOpenTooLongTime;
                 return true;
             default:
                 break;
@@ -600,8 +939,14 @@ bool GetPropertyBool(const uint32_t deviceInstance, const uint16_t objectType,
         *value = !c->isSet[propertyArrayIndex - 1];
         return true;
     }
-    // Out_Of_Service is a required property of every object in this example. This
-    // example never takes anything out of service: false.
+    // Out_Of_Service is a required property of every object in this example. The
+    // Access Door's is writable (see SetPropertyBool); everything else is never
+    // taken out of service: false.
+    if (propertyIdentifier == PROPERTY_IDENTIFIER_OUT_OF_SERVICE &&
+        objectType == OBJECT_TYPE_ACCESS_DOOR && objectInstance == ACCESS_DOOR_INSTANCE) {
+        *value = g_doorOutOfService;
+        return true;
+    }
     if (propertyIdentifier == PROPERTY_IDENTIFIER_OUT_OF_SERVICE &&
         (objectType == OBJECT_TYPE_ANALOG_INPUT ||
          objectType == OBJECT_TYPE_BINARY_INPUT ||
@@ -750,12 +1095,28 @@ bool GetPropertyCharString(const uint32_t deviceInstance, const uint16_t objectT
 // (1..16) the client wrote at. We store it in the door's Priority_Array; the
 // stack recomputes Present_Value from the array on the next read. A
 // WriteProperty of NULL relinquishes a slot and arrives through SetPropertyNull.
+// A pulse also starts the countdown DoorTick() relinquishes it on (section 1b).
+// The other writable door properties - the three timers, Out_Of_Service, and the
+// out-of-service-only Door_Status / Lock_Status / Door_Alarm_State - come here too.
 //
 // Return true when we accept the write; return false (optionally setting
 // *errorCode) to reject it, and the stack answers with a BACnet Error-PDU.
 // -----------------------------------------------------------------------------
 
-// ENUMERATED write - Access Door 1 (Cobalt) Present_Value: lock / unlock.
+// The Out_Of_Service-only writes (12.26.9 (c), Table 12-30 footnote 1). The stack
+// marks these properties writable once, at start-up; this is where the "only
+// while Out_Of_Service is TRUE" half of the rule is enforced.
+static bool RejectUnlessOutOfService(uint32_t* errorCode) {
+    if (!g_doorOutOfService) {
+        *errorCode = ERROR_CODE_WRITE_ACCESS_DENIED;
+        return true;
+    }
+    return false;
+}
+
+// ENUMERATED write - Access Door 1 (Cobalt): Present_Value (lock / unlock /
+// pulseUnlock / extendedPulseUnlock), and, while out of service, Door_Status,
+// Lock_Status and Door_Alarm_State.
 bool SetPropertyEnumerated(const uint32_t deviceInstance, const uint16_t objectType,
                            const uint32_t objectInstance, const uint32_t propertyIdentifier,
                            const uint32_t value, const bool useArrayIndex,
@@ -763,34 +1124,70 @@ bool SetPropertyEnumerated(const uint32_t deviceInstance, const uint16_t objectT
                            uint32_t* errorCode) {
     (void)useArrayIndex;
     (void)propertyArrayIndex;
-    if (deviceInstance != g_deviceInstance) {
+    if (deviceInstance != g_deviceInstance ||
+        objectType != OBJECT_TYPE_ACCESS_DOOR || objectInstance != ACCESS_DOOR_INSTANCE) {
         return false;
     }
-    Commandable* c = GetCommandable(objectType, objectInstance);
-    if (c != NULL && propertyIdentifier == PROPERTY_IDENTIFIER_PRESENT_VALUE) {
-        // An Access Door's Present_Value is a BACnetDoorValue: lock (0),
-        // unlock (1), pulseUnlock (2), or extendedPulseUnlock (3). Reject anything
-        // else with value-out-of-range - validating the written value is part of
-        // being a conformant DS-WP-B / DS-ACAD-B device.
-        if (value > DOOR_VALUE_EXTENDED_PULSE_UNLOCK) {
-            *errorCode = ERROR_CODE_VALUE_OUT_OF_RANGE;
+    switch (propertyIdentifier) {
+        case PROPERTY_IDENTIFIER_PRESENT_VALUE:
+            // An Access Door's Present_Value is a BACnetDoorValue: lock (0),
+            // unlock (1), pulseUnlock (2), or extendedPulseUnlock (3). Reject
+            // anything else with value-out-of-range - validating the written value
+            // is part of being a conformant DS-WP-B / DS-ACAD-B device. (At this
+            // Stack Pin the stack itself refuses such a value with a Reject while
+            // decoding, so this check is not reached - stack #3642, TODO.md.)
+            if (value > DOOR_VALUE_EXTENDED_PULSE_UNLOCK) {
+                *errorCode = ERROR_CODE_VALUE_OUT_OF_RANGE;
+                return false;
+            }
+            // CommandDoor (section 1b) stores the command and, for a pulse, starts
+            // the countdown that DoorTick() relinquishes it on.
+            CommandDoor(priority, value, "WriteProperty");
+            return true;
+
+        case PROPERTY_IDENTIFIER_DOOR_STATUS:
+            if (RejectUnlessOutOfService(errorCode)) {
+                return false;
+            }
+            if (value > DOOR_STATUS_LAST) {
+                *errorCode = ERROR_CODE_VALUE_OUT_OF_RANGE;
+                return false;
+            }
+            g_outOfServiceDoorStatus = value;
+            printf("WriteProperty (out of service): Access Door 1 (Cobalt) Door_Status <- %s\n",
+                   DoorStatusName(value));
+            return true;
+
+        case PROPERTY_IDENTIFIER_LOCK_STATUS:
+            if (RejectUnlessOutOfService(errorCode)) {
+                return false;
+            }
+            if (value > LOCK_STATUS_LAST) {
+                *errorCode = ERROR_CODE_VALUE_OUT_OF_RANGE;
+                return false;
+            }
+            g_outOfServiceLockStatus = value;
+            printf("WriteProperty (out of service): Access Door 1 (Cobalt) Lock_Status <- %s\n",
+                   LockStatusName(value));
+            return true;
+
+        case PROPERTY_IDENTIFIER_DOOR_ALARM_STATE:
+            if (RejectUnlessOutOfService(errorCode)) {
+                return false;
+            }
+            if (value > DOOR_ALARM_STATE_LAST) {
+                *errorCode = ERROR_CODE_VALUE_OUT_OF_RANGE;
+                return false;
+            }
+            g_outOfServiceAlarmState = value;
+            g_outOfServiceAlarmStateWritten = true;
+            printf("WriteProperty (out of service): Access Door 1 (Cobalt) Door_Alarm_State <- %s\n",
+                   DoorAlarmStateName(value));
+            return true;
+
+        default:
             return false;
-        }
-        // KNOWN GAP: pulseUnlock (2) / extendedPulseUnlock (3) are accepted and
-        // stored like any commanded value, but this example NEVER re-locks the
-        // door afterwards - it stays at the commanded value until it is written
-        // again or relinquished. A door controller must re-lock after
-        // Door_Pulse_Time / Door_Extended_Pulse_Time (served below as constants);
-        // re-locking the door is part of the B-ACDC Profile Function, so this is
-        // a defect in the example, not a simplification. It is pending the
-        // example's functional rework.
-        CommandWrite(c, priority, (double)value);
-        printf("WriteProperty: Access Door 1 (Cobalt) <- %s @ priority %u  (door is now %s)\n",
-               DoorValueName(value), EffectivePriority(priority),
-               DoorValueName(ResolveDoorValue(c)));
-        return true;
     }
-    return false;
 }
 
 // NULL write - relinquish the door's Present_Value at a priority. The stack
@@ -808,12 +1205,59 @@ bool SetPropertyNull(const uint32_t deviceInstance, const uint16_t objectType,
     }
     Commandable* c = GetCommandable(objectType, objectInstance);
     if (c != NULL && propertyIdentifier == PROPERTY_IDENTIFIER_PRESENT_VALUE) {
-        CommandRelinquish(c, priority);
-        printf("WriteProperty: relinquished Access Door %u @ priority %u  (door is now %s)\n",
-               objectInstance, EffectivePriority(priority), DoorValueName(ResolveDoorValue(c)));
+        RelinquishDoor(priority);
         return true;
     }
     return false;
+}
+
+// BOOLEAN write - Access Door 1 (Cobalt) Out_Of_Service. TRUE decouples the door
+// object from the (simulated) hardware; see SetDoorOutOfService in section 1b.
+bool SetPropertyBool(const uint32_t deviceInstance, const uint16_t objectType,
+                     const uint32_t objectInstance, const uint32_t propertyIdentifier,
+                     const bool value, const bool useArrayIndex,
+                     const uint32_t propertyArrayIndex, const uint8_t priority,
+                     uint32_t* errorCode) {
+    (void)useArrayIndex;
+    (void)propertyArrayIndex;
+    (void)priority;
+    (void)errorCode;
+    if (deviceInstance == g_deviceInstance && objectType == OBJECT_TYPE_ACCESS_DOOR &&
+        objectInstance == ACCESS_DOOR_INSTANCE &&
+        propertyIdentifier == PROPERTY_IDENTIFIER_OUT_OF_SERVICE) {
+        SetDoorOutOfService(value);
+        return true;
+    }
+    return false;
+}
+
+// UNSIGNED write - the Access Door's three timing properties, in tenths of a
+// second. A new Door_Pulse_Time applies to the NEXT pulse; one already running
+// keeps the deadline it started with.
+bool SetPropertyUnsignedInteger(const uint32_t deviceInstance, const uint16_t objectType,
+                                const uint32_t objectInstance, const uint32_t propertyIdentifier,
+                                const uint32_t value, const bool useArrayIndex,
+                                const uint32_t propertyArrayIndex, const uint8_t priority,
+                                uint32_t* errorCode) {
+    (void)useArrayIndex;
+    (void)propertyArrayIndex;
+    (void)priority;
+    (void)errorCode;
+    if (deviceInstance != g_deviceInstance || objectType != OBJECT_TYPE_ACCESS_DOOR ||
+        objectInstance != ACCESS_DOOR_INSTANCE) {
+        return false;
+    }
+    uint32_t* timing = NULL;
+    const char* name = NULL;
+    switch (propertyIdentifier) {
+        case PROPERTY_IDENTIFIER_DOOR_PULSE_TIME:          timing = &g_doorPulseTime;         name = "Door_Pulse_Time"; break;
+        case PROPERTY_IDENTIFIER_DOOR_EXTENDED_PULSE_TIME: timing = &g_doorExtendedPulseTime; name = "Door_Extended_Pulse_Time"; break;
+        case PROPERTY_IDENTIFIER_DOOR_OPEN_TOO_LONG_TIME:  timing = &g_doorOpenTooLongTime;   name = "Door_Open_Too_Long_Time"; break;
+        default: return false;
+    }
+    *timing = value;
+    printf("WriteProperty: Access Door 1 (Cobalt) %s <- %u (%.1f s)\n", name, value, value / 10.0);
+    return true;
 }
 
 // -----------------------------------------------------------------------------
@@ -885,11 +1329,14 @@ int main(int argc, char** argv) {
     BACnetStack_RegisterCallbackGetPropertyBool(GetPropertyBool);
     BACnetStack_RegisterCallbackGetPropertyOctetString(GetPropertyOctetString);
     // The "set" callbacks make this a B-ACDC: they accept WriteProperty (DS-WP-B)
-    // to the commandable Access Door (DS-ACAD-B). The door's Present_Value is an
-    // Enumerated, so those are the only two setters this profile needs - plus the
-    // NULL callback that relinquishes a priority slot.
+    // to the commandable Access Door (DS-ACAD-B). Present_Value (and, out of
+    // service, Door_Status / Lock_Status / Door_Alarm_State) is Enumerated; NULL
+    // relinquishes a priority slot; Out_Of_Service is a Boolean; the three door
+    // timers are Unsigned.
     BACnetStack_RegisterCallbackSetPropertyEnumerated(SetPropertyEnumerated);
     BACnetStack_RegisterCallbackSetPropertyNull(SetPropertyNull);
+    BACnetStack_RegisterCallbackSetPropertyBool(SetPropertyBool);
+    BACnetStack_RegisterCallbackSetPropertyUnsignedInteger(SetPropertyUnsignedInteger);
 
     // --- Create the device --------------------------------------------------
     if (!BACnetStack_AddDevice(g_deviceInstance)) {
@@ -998,17 +1445,43 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // Door_Status / Lock_Status / Secured_Status are optional on an Access Door
-    // (clause 12.3). We expose them because they are what makes this example
-    // legible: they report what the door IS, next to what it was COMMANDED to be.
+    // Door_Status / Lock_Status / Secured_Status / Door_Alarm_State are optional
+    // on an Access Door (clause 12.26). We expose them because they are what
+    // makes a door controller useful: they report what the door IS, next to what
+    // it was COMMANDED to be. (Secured_Status requires Door_Status - Table 12-30
+    // footnote 2.)
     if (!BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_ACCESS_DOOR,
                                         ACCESS_DOOR_INSTANCE, PROPERTY_IDENTIFIER_DOOR_STATUS, true) ||
         !BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_ACCESS_DOOR,
                                         ACCESS_DOOR_INSTANCE, PROPERTY_IDENTIFIER_LOCK_STATUS, true) ||
         !BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_ACCESS_DOOR,
-                                        ACCESS_DOOR_INSTANCE, PROPERTY_IDENTIFIER_SECURED_STATUS, true)) {
+                                        ACCESS_DOOR_INSTANCE, PROPERTY_IDENTIFIER_SECURED_STATUS, true) ||
+        !BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_ACCESS_DOOR,
+                                        ACCESS_DOOR_INSTANCE, PROPERTY_IDENTIFIER_DOOR_ALARM_STATE, true)) {
         printf("Error: Failed to enable the Access Door 1 (Cobalt) status properties.\n");
         return 1;
+    }
+
+    // Writable door properties. The stack only accepts a WriteProperty to a
+    // property marked writable; the Set* callbacks then decide what to do with it.
+    //   Door_Pulse_Time, Door_Extended_Pulse_Time, Door_Open_Too_Long_Time -
+    //       installer settings, always writable.
+    //   Out_Of_Service - writable, so the door can be taken off its hardware.
+    //   Door_Status, Lock_Status, Door_Alarm_State - "shall be writable when
+    //       Out_Of_Service is TRUE" (Table 12-30 footnote 1). Marked writable
+    //       here; SetPropertyEnumerated refuses them (write-access-denied) while
+    //       Out_Of_Service is FALSE.
+    static const uint32_t writableDoorProperties[] = {
+        PROPERTY_IDENTIFIER_DOOR_PULSE_TIME, PROPERTY_IDENTIFIER_DOOR_EXTENDED_PULSE_TIME,
+        PROPERTY_IDENTIFIER_DOOR_OPEN_TOO_LONG_TIME, PROPERTY_IDENTIFIER_OUT_OF_SERVICE,
+        PROPERTY_IDENTIFIER_DOOR_STATUS, PROPERTY_IDENTIFIER_LOCK_STATUS,
+        PROPERTY_IDENTIFIER_DOOR_ALARM_STATE };
+    for (const uint32_t writableProperty : writableDoorProperties) {
+        if (!BACnetStack_SetPropertyWritable(g_deviceInstance, OBJECT_TYPE_ACCESS_DOOR,
+                                             ACCESS_DOOR_INSTANCE, writableProperty, true)) {
+            printf("Error: Failed to make property %u of Access Door 1 (Cobalt) writable.\n", writableProperty);
+            return 1;
+        }
     }
 
     // --- Make the Access Door commandable -----------------------------------
@@ -1037,8 +1510,10 @@ int main(int argc, char** argv) {
 
     printf("FYI: Device %u (\"%s\") ready. Vendor ID %u. Press 'h' for help.\n",
            g_deviceInstance, DEVICE_NAME, VENDOR_IDENTIFIER);
-    printf("FYI: Access Door 1 (Cobalt) starts %s. WriteProperty its Present_Value "
-           "(0=lock, 1=unlock) to command it.\n", DoorValueName(ResolveDoorValue(&g_accessDoor)));
+    printf("FYI: Access Door 1 (Cobalt) starts %s, door shut. WriteProperty its Present_Value "
+           "(0=lock, 1=unlock, 2=pulseUnlock, 3=extendedPulseUnlock) to command it.\n",
+           DoorValueName(ResolveDoorValue(&g_accessDoor)));
+    printf("FYI: the lock relay and door contact are a SIMULATION - keys o / f / p (h for help).\n");
 
     // --- Run the stack ------------------------------------------------------
     // BACnetStack_Tick() processes incoming messages and timers. Call it
@@ -1046,10 +1521,30 @@ int main(int argc, char** argv) {
     bool running = true;
     while (running) {
         BACnetStack_Tick();
+        // The door: pulse expiry, the relay, the contact, the alarms (section 1b).
+        DoorTick();
 
         switch (CASExampleHelper::PollKey()) {
             case CASExampleHelper::KeyCommand::Help:
                 CASExampleHelper::PrintHelp(APP_NAME, APP_VERSION);
+                PrintDoorKeys();
+                break;
+            case CASExampleHelper::KeyCommand::ContactToggle:
+                g_doorContactOpen = !g_doorContactOpen;
+                printf("Simulation: door contact %s%s\n", g_doorContactOpen ? "OPEN" : "CLOSED",
+                       g_doorOutOfService ? " (Out_Of_Service: Door_Status keeps its written value)" : "");
+                break;
+            case CASExampleHelper::KeyCommand::ForceOpen:
+                g_doorContactOpen = true;
+                printf("Simulation: the door is FORCED open (door contact OPEN, lock relay %s)%s\n",
+                       g_lockRelayUnlocked ? "energised" : "released",
+                       g_doorOutOfService ? " (Out_Of_Service: Door_Status keeps its written value)" : "");
+                break;
+            case CASExampleHelper::KeyCommand::BadgePulse:
+                // A card reader wired to this controller: a valid badge is a local
+                // pulseUnlock at priority 8, the same command a remote access
+                // controller would send over BACnet.
+                CommandDoor(8, DOOR_VALUE_PULSE_UNLOCK, "Badge");
                 break;
             case CASExampleHelper::KeyCommand::Quit:
                 running = false;

@@ -24,6 +24,11 @@ This repository is self-contained:
 - `docs/PICS.md` - the Protocol Implementation Conformance Statement. Its
   objects-and-properties section is GENERATED from `docs/objects.json`; do not
   hand-edit between the `OBJECTS-PROPERTIES` markers.
+- `tests/` - the Wire Tests (Python 3, standard library only); `wiretest/` - the
+  series' shared Wiretest Harness, vendored like `common/` (never edit it here
+  alone: bump `WIRETEST_VERSION`, add a `wiretest/CHANGELOG.md` entry, re-copy).
+- `TODO.md` - defects outside this example that the Wire Tests report as
+  `[KNOWN GAP]`.
 - `docs/objects.json` - the input to that generator. Update it in the same change
   as any `main.cpp` change that adds an object or a `GetProperty*` branch.
 - `submodules/cas-bacnet-stack/` - the **CAS BACnet Stack** as a git submodule
@@ -59,8 +64,9 @@ commands above.
 .\build\Release\BACnetExampleBACDC.exe [--port 47808] [--deviceID 389011]   # Windows
 ```
 
-Interactive keys while running: `h` help, `q` quit, up/down nudge Analog Input 1.
-The door is commanded over BACnet (WriteProperty), not from the keyboard.
+Interactive keys while running: `h` help, `q` quit, up/down nudge Analog Input 1,
+and the door Simulation's `o` (open / shut the door), `f` (force it open),
+`p` (badge: pulseUnlock at priority 8).
 
 ## Conventions
 
@@ -71,9 +77,15 @@ The door is commanded over BACnet (WriteProperty), not from the keyboard.
   property** of each object for Protocol_Revision 30. In particular an Access Door
   requires `Door_Pulse_Time`, `Door_Extended_Pulse_Time`, and
   `Door_Open_Too_Long_Time`; all three are served.
-- Do **not** add alarms/events, COV, scheduling, trending, or
-  DeviceCommunicationControl. A door controller that reports access *events* is a
-  B-ACC / B-AACC - a different profile with its own example.
+- Do **not** add alarms/events (Notification Class, event reporting), COV,
+  scheduling, trending, or DeviceCommunicationControl. `Door_Alarm_State` is a
+  property the door serves, not event reporting. A door controller that reports
+  access *events* is a B-ACC / B-AACC - a different profile with its own example.
+- The **Profile Function** is the door: a pulse re-locks itself at its own
+  priority after its time (12.26.16/.17), and the door reports forced-open and
+  open-too-long. It lives in section 1b of `main.cpp` and `DoorTick()`. The lock
+  relay and door contact are **Simulation** (README says so); keep that label
+  if you touch them.
 - The Access Door is **commandable**: never serve `Present_Value` yourself. Serve
   the `Priority_Array` slots (typed getter for the value, Bool getter for
   "is this slot null?") plus `Relinquish_Default`, and let the stack resolve it.
@@ -86,7 +98,14 @@ The door is commanded over BACnet (WriteProperty), not from the keyboard.
 
 ## How to verify a change
 
-There are no unit tests; verification is behavioural:
+Run the Wire Tests against your build - they are the gate CI runs (Linux):
+
+```bash
+python3 tests/run_wire_tests.py --exe build/BACnetExampleBACDC
+```
+
+A behaviour change needs a check that **fails with the feature removed**; record
+it in the table at the end of `tests/README.md`. Then, by hand:
 
 1. Build, then run one instance on a clear UDP port.
 2. With a BACnet client (e.g. the CAS BACnet Explorer), send **Who-Is** and
@@ -98,8 +117,8 @@ There are no unit tests; verification is behavioural:
    then read it back: `Present_Value` = unlock, `Lock_Status` = unlocked,
    `Secured_Status` = unsecured. Write NULL at priority 8 to relinquish and
    confirm the door falls back to `Relinquish_Default` = lock.
-5. Write an out-of-range value (e.g. 9) and confirm it is rejected with
-   `value-out-of-range`.
+5. Write an out-of-range value (e.g. 9) and confirm it is refused (a Reject at
+   this Stack Pin, stack #3642 - see TODO.md).
 6. Confirm services that are not enabled (e.g. ReadPropertyMultiple,
    DeviceCommunicationControl) are rejected.
 7. If you changed the objects or their properties, regenerate `docs/PICS.md`

@@ -5,6 +5,52 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - unreleased
+
+The example now performs the B-ACDC Profile Function - it locks, unlocks and
+re-locks a door - and proves it with Wire Tests (the series' Profile-functional
+bar, `docs/GLOSSARY.md` in the example series).
+
+### Added
+
+- **The door re-locks itself.** `pulseUnlock` / `extendedPulseUnlock` are
+  relinquished at the priority that wrote them after `Door_Pulse_Time` /
+  `Door_Extended_Pulse_Time` (ANSI/ASHRAE 135-2024 12.26.16 / 12.26.17), and a
+  pulse written below a higher-priority command is relinquished immediately
+  (12.26.4). Replaces the "pulse unlock never re-locks" known gap.
+- **Door Simulation** (labelled as Simulation in README): a lock relay that
+  follows the commanded `Present_Value` and a door-position contact moved by the
+  new keys `o` (open / shut), `f` (force open) and `p` (badge: `pulseUnlock` at
+  priority 8). `Door_Status` reports the contact (it was hard-coded `closed`),
+  `Lock_Status` the relay, `Secured_Status` is derived per 12.26.14.
+- **`Door_Alarm_State`** (optional, now served): `forcedOpen` when the door opens
+  while commanded `lock`; `doorOpenTooLong` when it is still open
+  `Door_Open_Too_Long_Time` after the re-lock (12.26.19). No event notifications
+  - event reporting stays out of the B-ACDC surface.
+- **Writable:** `Door_Pulse_Time`, `Door_Extended_Pulse_Time`,
+  `Door_Open_Too_Long_Time`, and `Out_Of_Service`; while `Out_Of_Service` is TRUE
+  the relay holds and `Door_Status`, `Lock_Status` and `Door_Alarm_State` are
+  writable (12.26.9, Table 12-30 footnote 1), refused with `write-access-denied`
+  otherwise.
+- Every door state transition is printed on the console.
+- **Wire Tests** (`tests/`, Python 3 standard library): pulse and extended pulse
+  re-lock, arbitration both ways, refusal of an out-of-range value, the
+  forced-open and open-too-long Failure Modes, and the Simulation keys. Each
+  check verified to fail with its feature removed (`tests/README.md`). CI runs
+  them on Linux after the smoke test.
+- **`wiretest/` 0.2.0** vendored (the series' shared harness, from B-RTR 0.1.0
+  plus WriteProperty / `Client` / `Program.press`).
+- `TODO.md`: the one known gap - the stack answers an out-of-range
+  `Present_Value` with Reject (OTHER), not Error VALUE_OUT_OF_RANGE (stack
+  #3642).
+
+### Changed
+
+- **`common/` 3.0.0 -> 3.1.0**: `KeyCommand::ContactToggle` (`o`), `ForceOpen`
+  (`f`), `BadgePulse` (`p`). The rest of the series is not yet re-synced to
+  3.1.0.
+- PICS: rows for `Door_Alarm_State`, the writable properties, version 1.2.0.
+
 ## [1.1.2] - unreleased
 
 ### Changed - honesty pass (2026-10-14)

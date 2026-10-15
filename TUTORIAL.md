@@ -31,16 +31,32 @@ authoritative checklist; it is in the source rather than here so it cannot be
 skipped by someone who only reads the code.
 
 **Change the door's timing** - `Door_Pulse_Time`, `Door_Extended_Pulse_Time`,
-and `Door_Open_Too_Long_Time` are compile-time constants (in tenths of a
-second) next to the Access Door section of `main.cpp`. A real controller would
-*act* on `Door_Pulse_Time` / `Door_Extended_Pulse_Time` - re-locking the door
-automatically after a `pulseUnlock` / `extendedPulseUnlock` expires. **This
-example does not, and that is a known gap, not a design choice** (see the
-`KNOWN GAP` note in `SetPropertyEnumerated`): it serves the properties, but
-after a pulse unlock the door stays unlocked until it is written again or
-relinquished. Re-locking is part of what a door controller is for, so the gap
-is pending the example's functional rework; if you build on this example, wire
-the re-lock to the tick loop yourself.
+and `Door_Open_Too_Long_Time` start at 3 s, 10 s and 30 s (`g_doorPulseTime`
+and friends, in tenths of a second, next to the Access Door section of
+`main.cpp`) and are **writable over BACnet**, so an installer sets them per
+door. The door acts on them in `DoorTick()`: a `pulseUnlock` /
+`extendedPulseUnlock` is relinquished at its own priority when its time runs
+out (clause 12.26.16 / 12.26.17), and the open-too-long alarm counts from the
+re-lock (12.26.19). A new value applies to the next pulse, not one already
+running.
+
+**Put the door on real hardware** - section 1b of `main.cpp`, "The door
+Simulation", is the only part that pretends. `g_lockRelayUnlocked` is the
+relay output and `g_doorContactOpen` the door-position input; on a real
+controller, write the relay to a GPIO where `DoorTick()` changes it, and read
+the contact from a GPIO (debounced) instead of from the `o` / `f` keys. Leave
+the rest - the pulse expiry, the alarm rules, `Out_Of_Service` - as it is: that
+is the BACnet behaviour, and the Wire Tests check it.
+
+**Add a door unlock delay** - `Door_Unlock_Delay_Time` (optional, 12.26.18)
+holds the lock shut for a while after a pulse is written. It is not served
+here; to add it, enable the property, serve it, and in `DoorTick()` keep the
+relay locked until the pulse is that old.
+
+**Add an Unlock-on-fire input** - command the door with `CommandDoor(...)` at
+priority 1 or 2 from wherever your fire interface is read, exactly as the `p`
+key commands it at priority 8. The Priority_Array decides who wins; a lower
+priority pulse written while it holds is relinquished at once (12.26.4).
 
 ### Add a second analog input
 
@@ -160,15 +176,17 @@ B-ACDC — the whole picture:
 | `Priority_Array` | **you** | `GetPropertyEnumerated` serves each slot's door value; `GetPropertyBool` reports whether a slot is null |
 | `Relinquish_Default` | **you** | `GetPropertyEnumerated` |
 | `Reliability` | **you** | `GetPropertyEnumerated` - served as `no-fault-detected(0)`, which is also the datatype default, so it reads correctly either way |
-| `Out_Of_Service` | **you** | `GetPropertyBool` — matched on object **type only** |
-| `Door_Pulse_Time`, `Door_Extended_Pulse_Time`, `Door_Open_Too_Long_Time` | **you** | `GetPropertyUnsignedInteger` - the required timing properties no other object in this series has |
-| `Door_Status`, `Lock_Status`, `Secured_Status` *(optional)* | **you** | `GetPropertyEnumerated` - derived from the resolved commanded value; a real controller would read them from door hardware instead |
+| `Out_Of_Service` | **you** | `GetPropertyBool` / `SetPropertyBool` - writable; TRUE decouples the door from its (simulated) hardware |
+| `Door_Pulse_Time`, `Door_Extended_Pulse_Time`, `Door_Open_Too_Long_Time` | **you** | `GetPropertyUnsignedInteger` / `SetPropertyUnsignedInteger` - the required timing properties no other object in this series has; writable |
+| `Door_Status`, `Lock_Status` *(optional)* | **you** | `GetPropertyEnumerated` - the door contact and the lock relay of the Simulation; while `Out_Of_Service` is TRUE, the values a client wrote (`SetPropertyEnumerated`) |
+| `Secured_Status` *(optional)* | **you** | `GetPropertyEnumerated` - derived on every read exactly as 12.26.14 lists |
+| `Door_Alarm_State` *(optional)* | **you** | `GetPropertyEnumerated` - `forcedOpen` / `doorOpenTooLong` / `normal` from `DoorTick()`; writable only while `Out_Of_Service` is TRUE |
 | `Event_State` | **stack**, sort of | no intrinsic alarming here, so nothing serves it — it reads `normal` only because `normal` is the enumeration's zero value and the stack substitutes a datatype default. Correct by coincidence, not design. |
 
 Every object, not just this one, is in [docs/PICS.md](docs/PICS.md).
 
-Going beyond a single commandable door (multiple doors, access events, alarms)
-means implementing a richer profile — see the series table in
+Going beyond a single commandable door (multiple doors, access events, alarm
+*notifications*) means implementing a richer profile — see the series table in
 [README.md](README.md).
 
 ## Reviewing your device
@@ -191,7 +209,14 @@ rather than against "it looked fine in the explorer":
    higher-priority write wins regardless of write order; relinquish it and
    confirm the door falls back to the next-highest slot, then to
    `Relinquish_Default` once every slot is null; write an out-of-range value
-   (e.g. `9`) and confirm it is rejected with `value-out-of-range`.
+   (e.g. `9`) and confirm it is refused (at this Stack Pin with a Reject - see
+   [TODO.md](TODO.md)).
+6. Run the Wire Tests - `python3 tests/run_wire_tests.py --exe <your build>`.
+   They are the automated form of the Profile Function: pulses re-lock at their
+   own priority, arbitration, and the forced-open / open-too-long Failure
+   Modes. If you change the door logic, a test that still passes after you
+   removed the feature it checks is not checking it - see the table in
+   [tests/README.md](tests/README.md).
 
 ### Keeping the PICS honest
 
@@ -227,4 +252,6 @@ not in `accepted`, comes out as a ⚠ row - that is a defect, not a feature.
 | Client sends Who-Is but sees no I-Am | Firewall is blocking UDP 47808, or the client and device are on different subnets (Who-Is is a broadcast). Allow the port; test on the same subnet first. |
 | Replies show an unexpected device instance or vendor | Another BACnet device is already answering on this host/port. On Linux/macOS two processes can share the port and both reply; on Windows the example asks for `SO_EXCLUSIVEADDRUSE` (`common/SimpleUDP.cpp`) so this shows up as a bind failure instead. Stop the other device, or use `--port`. |
 | WriteProperty to `Access Door 1` `Present_Value` succeeds but the value doesn't change | You wrote at a priority *lower* than an already-commanded slot. Higher priority (lower number) wins - relinquish the higher-priority slot first, or write at a higher priority (lower number) than it. |
-| The door never re-locks after a `pulseUnlock` | A known gap in this example, pending its functional rework - see "Change the door's timing" above. It serves `Door_Pulse_Time` but never re-locks; a real controller wires the re-lock to its tick loop. |
+| The door re-locks before `Door_Pulse_Time` seems to be up | A pulse written at a priority *below* one already commanding the door is relinquished immediately (clause 12.26.4) - the console says so. Write the pulse at a higher priority, or relinquish the other command. |
+| `Door_Alarm_State` reads `forcedOpen` when you open the door with `o` | Correct: the door was commanded `lock`. Badge first (`p`), then open it within `Door_Pulse_Time`. |
+| Writing `Door_Status` gets `write-access-denied` | It is only writable while the Access Door's `Out_Of_Service` is TRUE (clause 12.26.9). Write `Out_Of_Service` = TRUE first. |

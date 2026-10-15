@@ -69,11 +69,11 @@
       "type": "Access Door",
       "instance": 1,
       "name": "Cobalt",
-      "app": ["Object_Name", "Reliability", "Out_Of_Service", "Relinquish_Default", "Door_Pulse_Time", "Door_Extended_Pulse_Time", "Door_Open_Too_Long_Time", "Door_Status", "Lock_Status", "Secured_Status"],
-      "enabled": ["Door_Status", "Lock_Status", "Secured_Status"],
-      "writable": ["Present_Value"],
+      "app": ["Object_Name", "Reliability", "Out_Of_Service", "Relinquish_Default", "Door_Pulse_Time", "Door_Extended_Pulse_Time", "Door_Open_Too_Long_Time", "Door_Status", "Lock_Status", "Secured_Status", "Door_Alarm_State"],
+      "enabled": ["Door_Status", "Lock_Status", "Secured_Status", "Door_Alarm_State"],
+      "writable": ["Present_Value", "Out_Of_Service", "Door_Pulse_Time", "Door_Extended_Pulse_Time", "Door_Open_Too_Long_Time", "Door_Status", "Lock_Status", "Door_Alarm_State"],
       "accepted": ["Event_State"],
-      "note": "the B-ACDC-defining object; commandable - Present_Value and Priority_Array are stack-computed from the 16-slot priority array this example serves; Relinquish_Default = lock(0). Door_Status, Lock_Status, and Secured_Status are optional but enabled here because they make the example legible (what the door IS vs. what it was COMMANDED to be)"
+      "note": "the B-ACDC-defining object; commandable - Present_Value and Priority_Array are stack-computed from the 16-slot priority array this example serves; Relinquish_Default = lock(0). pulseUnlock / extendedPulseUnlock are relinquished at their own priority after Door_Pulse_Time / Door_Extended_Pulse_Time (12.26.16/.17). Door_Status, Lock_Status, Secured_Status and Door_Alarm_State are optional, served from the door Simulation (a lock relay that follows Present_Value and a door contact); Door_Alarm_State reads forcedOpen or doorOpenTooLong (12.26.19/.20). The three timing properties are writable. Out_Of_Service is writable; while it is TRUE, Door_Status, Lock_Status and Door_Alarm_State accept writes (12.26.9, Table 12-30 footnote 1) and are refused with write-access-denied otherwise"
     },
     {
       "type": "Network Port",

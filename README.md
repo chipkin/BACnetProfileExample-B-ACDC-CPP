@@ -4,8 +4,12 @@ A minimal, copy-paste-friendly example showing how to implement the BACnet
 **B-ACDC (Access Control Door Controller)** device profile in C++ using the
 [CAS BACnet Stack](https://store.chipkin.com/services/stacks/bacnet-stack).
 It listens on **BACnet/IP (UDP 47808)**, answers **ReadProperty** and
-**WriteProperty** requests, is discoverable via **Who-Is / I-Am**, and exposes
-one **commandable Access Door** that a client locks and unlocks.
+**WriteProperty** requests, is discoverable via **Who-Is / I-Am**, and runs one
+**commandable Access Door** the way a door controller does: a client locks,
+unlocks or **pulse-unlocks** it, the door **re-locks itself** when the pulse time
+runs out, and it reports when the door is **forced open** or **held open too
+long**. The lock relay and door contact it drives are a
+[Simulation](#the-door-simulation); everything BACnet does with them is real.
 
 **[Download a prebuilt binary](https://github.com/chipkin/BACnetProfileExample-B-ACDC-CPP/releases)**
 (Windows and Linux x64) - or build it yourself, see [Build](#build) below.
@@ -15,9 +19,9 @@ one **commandable Access Door** that a client locks and unlocks.
 - **[docs/PICS.md](docs/PICS.md)** - the Protocol Implementation Conformance
   Statement: every object, every property, and who answers it.
 
-> **Versions:** this document describes **example v1.1.2**, built and verified
+> **Versions:** this document describes **example v1.2.0**, built and verified
 > against **CAS BACnet Stack 6.0.23** (`6.x` @ `e6de4ffd`), at
-> **Protocol_Revision 30**, with the vendored `common/` helper at **v3.0.0**.
+> **Protocol_Revision 30**, with the vendored `common/` helper at **v3.1.0**.
 > Running the example prints all three - if what it prints disagrees with this
 > line, trust the program and check `CHANGELOG.md`.
 
@@ -29,7 +33,7 @@ Device 389011  "Chipkin Example B-ACDC"   (Vendor 389 - Chipkin Automation Syste
     ├── Analog Input 1       "Bronze"      Present_Value  21.5    (REAL, degrees Celsius; read-only)
     ├── Binary Input 1       "Emerald"     Present_Value  active  (0 = inactive / 1 = active; read-only)
     ├── Multi-State Input 1  "Hot Pink"    Present_Value  1       (state, 1..3; read-only)
-    ├── Access Door 1        "Cobalt"      Present_Value  lock    (commandable - WriteProperty locks/unlocks)
+    ├── Access Door 1        "Cobalt"      Present_Value  lock    (commandable - lock / unlock / pulse; re-locks itself)
     └── Network Port 1       "Vermilion"   the BACnet/IP port     (required on every device)
 ```
 
@@ -42,16 +46,65 @@ is not stored directly, but resolved by the stack from a 16-slot
 it, and the stack reports the highest-priority non-null slot (or
 `Relinquish_Default`) as the effective value. A fire-alarm system can command
 the door at a high priority and a badge reader at a low one, and BACnet decides
-who wins - no application logic required. `Present_Value` is a
-**BACnetDoorValue**: `0` = lock, `1` = unlock, `2` = pulseUnlock,
-`3` = extendedPulseUnlock.
+who wins. `Present_Value` is a **BACnetDoorValue**: `0` = lock, `1` = unlock,
+`2` = pulseUnlock, `3` = extendedPulseUnlock.
 
-> **Known gap - pulse unlock never re-locks.** `pulseUnlock` and
-> `extendedPulseUnlock` are accepted and stored, but this example does not
-> re-lock the door when `Door_Pulse_Time` / `Door_Extended_Pulse_Time` expires:
-> the door stays unlocked until it is written again or relinquished. Re-locking
-> is part of a door controller's job, so this is a gap in the example, pending
-> its functional rework - not behaviour to copy.
+## The scenario: a door that locks itself again
+
+What a B-ACDC is for, in one sentence: **it locks a door, unlocks it when told
+to, and locks it again.** This example does that against a Peer - any BACnet
+client: an access control panel, a fire-alarm interface, a commissioning tool,
+or the Python client in [`tests/`](tests/README.md):
+
+1. The Peer writes `Present_Value` = `pulseUnlock` at priority 8 (what an
+   access panel sends when someone badges in). The lock relay opens:
+   `Lock_Status` = `unlocked`, `Secured_Status` = `unsecured`,
+   `Current_Command_Priority` = 8.
+2. Someone walks through: `Door_Status` = `opened`.
+3. After `Door_Pulse_Time` (3.0 s by default) the controller **relinquishes
+   priority 8 by itself** - `Priority_Array[8]` reads NULL, `Present_Value`
+   falls back to `lock`, the relay locks. That is clause 12.26.16 of
+   ANSI/ASHRAE 135-2024: the Present_Value "shall be automatically
+   relinquished at the priority that established the PULSE_UNLOCK command".
+   `extendedPulseUnlock` does the same on `Door_Extended_Pulse_Time`.
+4. **Failure Mode - held open.** If the door is still open
+   `Door_Open_Too_Long_Time` after it re-locked, `Door_Alarm_State` reads
+   `doorOpenTooLong` (12.26.19). Shut it and it returns to `normal`.
+5. **Failure Mode - forced open.** If the door opens while it is commanded
+   `lock` - nobody was let in - `Door_Alarm_State` reads `forcedOpen` until it
+   shuts.
+
+A pulse written *below* a higher-priority command (a fire-alarm `unlock` at
+priority 5, say) is acknowledged and relinquished at once, as 12.26.4 requires;
+a pulse *above* one wins while it runs and then hands the door back to it.
+Every one of these steps is printed on the console as it happens.
+
+The door does not send **event notifications** about its alarms: event
+reporting is optional for a B-ACDC, and a door controller that reports access
+events is a B-ACC / B-AACC. The alarm is in `Door_Alarm_State` for anyone who
+reads it.
+
+### The door Simulation
+
+A real door controller has a lock relay (a GPIO output driving the strike or
+maglock) and a door-position contact (a reed switch on a GPIO input). This
+example has neither, so it **simulates** them - non-BACnet scaffolding,
+outside the BACnet Surface, in section 1b of [`main.cpp`](main.cpp):
+
+- the **lock relay** follows the commanded `Present_Value` (open for
+  `unlock` / `pulseUnlock` / `extendedPulseUnlock`), and is what `Lock_Status`
+  reports;
+- the **door contact** is moved from the keyboard - `o` opens and shuts the
+  door, `f` forces it open - and is what `Door_Status` reports;
+- `p` is a **badge reader** wired to the controller: a local `pulseUnlock` at
+  priority 8, the same command an access panel would send over BACnet.
+
+To port the example to hardware, replace the relay and contact variables with
+your GPIO and keep everything else. A client can also simulate the door
+**over BACnet**, the standard way: write `Out_Of_Service` = TRUE and
+`Door_Status`, `Lock_Status` and `Door_Alarm_State` become writable, and the
+alarm logic responds to written values "as if those changes had occurred to
+the physical door" (12.26.9). The Wire Tests use exactly that.
 
 ## What this example supports
 
@@ -79,7 +132,7 @@ profile with its own example.
 | Service | Notes |
 |---------|-------|
 | ReadProperty | Responds to property reads (DS-RP-B). |
-| WriteProperty | Accepts a door command into the Priority_Array (DS-WP-B). |
+| WriteProperty | Accepts a door command into the Priority_Array, the door's three timing properties, and `Out_Of_Service` (DS-WP-B). |
 | Who-Is / I-Am | Answers Who-Is with I-Am, and broadcasts an I-Am on start-up (DM-DDB-B). |
 | Who-Has / I-Have | Answers Who-Has with I-Have (DM-DOB-B). |
 
@@ -122,6 +175,9 @@ This is a **self-contained** project. It ships:
 - `common/` - the shared helper (UDP, callbacks, CLI, keyboard) vendored in.
 - `CMakeLists.txt` - the build, the same on Windows, Linux, and macOS.
 - `docs/PICS.md` - the conformance statement.
+- `tests/` - the Wire Tests (Python 3, standard library only), and
+  `wiretest/` - the series' shared Wiretest Harness they are written against
+  (vendored, like `common/`).
 - `submodules/cas-bacnet-stack/` - the **CAS BACnet Stack as a git submodule**
   (private; requires a license - see above). Its sources are compiled into the
   executable, so there is no library or DLL to build, ship, or install.
@@ -179,13 +235,29 @@ CMake at it: `cmake -B build -S . -D CAS_STACK_DIR=/path/to/cas-bacnet-stack`.
 Expected output:
 
 ```
-BACnet B-ACDC (Access Control Door Controller) Example - C++ v1.1.2
+BACnet B-ACDC (Access Control Door Controller) Example - C++ v1.2.0
 CAS BACnet Stack version: 6.0.23.0
-Common helper (common/) version: 3.0.0
+Common helper (common/) version: 3.1.0
 FYI: Listening for BACnet/IP on UDP port 47808 (Network Port 1).
 TX 21 bytes to 192.168.3.255:47808 (broadcast) (Network Port 1)
 FYI: Device 389011 ("Chipkin Example B-ACDC") ready. Vendor ID 389. Press 'h' for help.
-FYI: Access Door 1 (Cobalt) starts lock. WriteProperty its Present_Value (0=lock, 1=unlock) to command it.
+FYI: Access Door 1 (Cobalt) starts lock, door shut. WriteProperty its Present_Value (0=lock, 1=unlock, 2=pulseUnlock, 3=extendedPulseUnlock) to command it.
+FYI: the lock relay and door contact are a SIMULATION - keys o / f / p (h for help).
+```
+
+A badge (`p`) with the door opened (`o`) and left open prints:
+
+```
+Badge: Access Door 1 (Cobalt) <- pulseUnlock @ priority 8, re-locks in 3.0 s
+Access Door 1 (Cobalt): Present_Value lock -> pulseUnlock
+Simulation: lock relay energised (door unlocked) -> Lock_Status unlocked
+Access Door 1 (Cobalt): Secured_Status unsecured
+Simulation: door contact OPEN
+Access Door 1 (Cobalt): Door_Status opened
+Access Door 1 (Cobalt): pulseUnlock @ priority 8 expired - relinquished (12.26.16)
+Access Door 1 (Cobalt): Present_Value pulseUnlock -> lock
+Simulation: lock relay released (door locked) -> Lock_Status locked
+Access Door 1 (Cobalt): Door_Alarm_State normal -> doorOpenTooLong
 ```
 
 The `TX` line is the start-up I-Am the device broadcasts to announce itself. It
@@ -221,12 +293,31 @@ While the example runs, these keys are available:
 | `q` | Quit. |
 | up arrow | Increase Analog Input 1 (`Bronze`) by 1.1. |
 | down arrow | Decrease Analog Input 1 (`Bronze`) by 1.1. |
-
-The door is commanded over BACnet (WriteProperty), not from the keyboard.
+| `o` | Simulation: open / shut the door (the door contact). |
+| `f` | Simulation: force the door open, whatever the lock is doing. |
+| `p` | Simulation: present a badge - `pulseUnlock` at priority 8. |
 
 ## Verify
 
-Use a BACnet client such as the
+**Automated, on the wire** - [`tests/`](tests/README.md) (Python 3 standard
+library only). One command starts the door controller and drives it from a
+Python client - the Peer:
+
+```bash
+python3 tests/run_wire_tests.py --exe build/BACnetExampleBACDC
+```
+
+They check that `pulseUnlock` and `extendedPulseUnlock` are relinquished at
+their own priority after their own times (Priority_Array slot NULL,
+Present_Value `lock`, relay locked), priority arbitration between a pulse and
+another command in both directions, refusal of a value that is not a
+BACnetDoorValue, and both Failure Modes - forced open and held open too long -
+plus the Simulation's own keys on Linux/macOS. Each check has been shown to
+fail with its feature removed (the table at the end of
+[tests/README.md](tests/README.md)). A `[KNOWN GAP]` line is a stack defect,
+listed in [TODO.md](TODO.md). CI runs them on Linux after the smoke test.
+
+**By hand** - with a BACnet client such as the
 [**CAS BACnet Explorer**](https://store.chipkin.com/products/tools/cas-bacnet-explorer):
 
 1. **Discover** - send a **Who-Is**. The device replies with **I-Am** from
@@ -247,8 +338,15 @@ Use a BACnet client such as the
    door returns to `unlock` (slot 8 is still commanded). WriteProperty `NULL` at
    priority 8 too -> every slot is now null, so the door falls back to
    `Relinquish_Default` = `lock`.
-7. **Confirm validation** - WriteProperty `Present_Value` = `9` -> rejected with
-   `value-out-of-range`.
+7. **Confirm validation** - WriteProperty `Present_Value` = `9` -> refused. (The
+   stack at this pin answers Reject, not the `value-out-of-range` Error the
+   standard names - see [TODO.md](TODO.md).)
+8. **Pulse** - WriteProperty `Present_Value` = `2` (pulseUnlock) at priority 8,
+   read `Present_Value` at once (`pulseUnlock`) and again after
+   `Door_Pulse_Time` (3.0 s): `lock`, `Priority_Array[8]` NULL.
+9. **The alarms** - press `o` with the door locked: `Door_Alarm_State` reads
+   `forcedOpen`; `o` again to shut it. Or badge (`p`), open (`o`) and wait
+   `Door_Open_Too_Long_Time` (30 s) past the re-lock: `doorOpenTooLong`.
 
 For a property-by-property review against the conformance statement, see
 [TUTORIAL.md](TUTORIAL.md).
