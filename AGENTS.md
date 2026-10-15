@@ -68,7 +68,7 @@ The door is commanded over BACnet (WriteProperty), not from the keyboard.
   Door is "Cobalt"); vendor id 389.
 - Implement **only** the services and objects the B-ACDC profile requires -
   DS-RP-B, DS-WP-B, DS-ACAD-B, DM-DDB-B, DM-DOB-B - but expose **every required
-  property** of each object for Protocol_Revision 24. In particular an Access Door
+  property** of each object for Protocol_Revision 30. In particular an Access Door
   requires `Door_Pulse_Time`, `Door_Extended_Pulse_Time`, and
   `Door_Open_Too_Long_Time`; all three are served.
 - Do **not** add alarms/events, COV, scheduling, trending, or
@@ -92,7 +92,7 @@ There are no unit tests; verification is behavioural:
 2. With a BACnet client (e.g. the CAS BACnet Explorer), send **Who-Is** and
    confirm **I-Am** from device 389011.
 3. **ReadProperty** every required property of every object and confirm the
-   values; confirm `Protocol_Revision` is 24 and `Object_List` lists all six
+   values; confirm `Protocol_Revision` is 30 and `Object_List` lists all six
    objects.
 4. **WriteProperty** `Access Door 1` `Present_Value` = 1 (unlock) at priority 8,
    then read it back: `Present_Value` = unlock, `Lock_Status` = unlocked,

@@ -33,12 +33,14 @@ skipped by someone who only reads the code.
 **Change the door's timing** - `Door_Pulse_Time`, `Door_Extended_Pulse_Time`,
 and `Door_Open_Too_Long_Time` are compile-time constants (in tenths of a
 second) next to the Access Door section of `main.cpp`. A real controller would
-also *act* on `Door_Pulse_Time` / `Door_Extended_Pulse_Time` - re-locking the
-door automatically after a `pulseUnlock` / `extendedPulseUnlock` expires. This
-example deliberately does not time-simulate that auto-revert (see the note in
-`SetPropertyEnumerated`): it serves the properties, but the door stays at
-whatever value was last commanded until written again or relinquished. Wiring
-the auto-revert to the tick loop is a natural next step if you build on this.
+*act* on `Door_Pulse_Time` / `Door_Extended_Pulse_Time` - re-locking the door
+automatically after a `pulseUnlock` / `extendedPulseUnlock` expires. **This
+example does not, and that is a known gap, not a design choice** (see the
+`KNOWN GAP` note in `SetPropertyEnumerated`): it serves the properties, but
+after a pulse unlock the door stays unlocked until it is written again or
+relinquished. Re-locking is part of what a door controller is for, so the gap
+is pending the example's functional rework; if you build on this example, wire
+the re-lock to the tick loop yourself.
 
 ### Add a second analog input
 
@@ -153,7 +155,7 @@ B-ACDC — the whole picture:
 | Property | Served by | How |
 |---|---|---|
 | `Object_Identifier`, `Object_Type`, `Object_List`, `Property_List`, `Status_Flags` | **stack** | generated from the object you added |
-| `Current_Command_Priority` | **stack** | computed from the Priority_Array (required at Protocol_Revision 24) |
+| `Current_Command_Priority` | **stack** | computed from the Priority_Array (required at Protocol_Revision 30) |
 | `Present_Value` | **you (write) / stack (read)** | `SetPropertyEnumerated` accepts a door-value write (lock/unlock/pulse) at a priority; on read the **stack computes** it from the Priority_Array slots (highest non-null, or `Relinquish_Default` = lock) |
 | `Priority_Array` | **you** | `GetPropertyEnumerated` serves each slot's door value; `GetPropertyBool` reports whether a slot is null |
 | `Relinquish_Default` | **you** | `GetPropertyEnumerated` |
@@ -225,4 +227,4 @@ not in `accepted`, comes out as a ⚠ row - that is a defect, not a feature.
 | Client sends Who-Is but sees no I-Am | Firewall is blocking UDP 47808, or the client and device are on different subnets (Who-Is is a broadcast). Allow the port; test on the same subnet first. |
 | Replies show an unexpected device instance or vendor | Another BACnet device is already answering on this host/port. On Linux/macOS two processes can share the port and both reply; on Windows the example asks for `SO_EXCLUSIVEADDRUSE` (`common/SimpleUDP.cpp`) so this shows up as a bind failure instead. Stop the other device, or use `--port`. |
 | WriteProperty to `Access Door 1` `Present_Value` succeeds but the value doesn't change | You wrote at a priority *lower* than an already-commanded slot. Higher priority (lower number) wins - relinquish the higher-priority slot first, or write at a higher priority (lower number) than it. |
-| The door never re-locks after a `pulseUnlock` | Expected in this example - see "Change the door's timing" above. This example serves `Door_Pulse_Time` but does not time-simulate the auto-revert; a real controller wires that to its tick loop. |
+| The door never re-locks after a `pulseUnlock` | A known gap in this example, pending its functional rework - see "Change the door's timing" above. It serves `Door_Pulse_Time` but never re-locks; a real controller wires the re-lock to its tick loop. |

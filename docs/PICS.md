@@ -18,10 +18,10 @@ see [README.md](../README.md).
 | **Vendor Identifier** | 389 |
 | **Product Name** | CAS BACnet Stack Example - B-ACDC |
 | **Product Model Number** | CAS BACnet Stack Example - B-ACDC |
-| **Application Software Version** | 1.0.0 |
-| **Firmware Revision** | 1.0.0 |
+| **Application Software Version** | 1.1.2 (`APP_VERSION` in `main.cpp`) |
+| **Firmware Revision** | the linked CAS BACnet Stack version (6.0.23.0 at this Stack Pin) |
 | **BACnet Protocol Version** | 1 |
-| **BACnet Protocol Revision** | 24 |
+| **BACnet Protocol Revision** | 30 |
 
 **Product Description:** a minimal BACnet/IP access-control door controller
 built on the CAS BACnet Stack. It presents the three read-only sensor objects
@@ -207,12 +207,14 @@ Every object this example creates, and every REQUIRED property of each (per ANSI
 | Out_Of_Service | Boolean | app | no |
 | Priority_Array | BACnetARRAY[16] of BACnetOptionalDoorValue | stack | no |
 | Relinquish_Default | BACnetDoorValue | app | no |
+| Current_Command_Priority | BACnetOptionalUnsigned | stack | no |
 | Door_Status *(optional, enabled)* | BACnetDoorStatus | app | no |
 | Lock_Status *(optional, enabled)* | BACnetLockStatus | app | no |
 | Secured_Status *(optional, enabled)* | BACnetDoorSecuredStatus | app | no |
 | Door_Pulse_Time | Unsigned | app | no |
 | Door_Extended_Pulse_Time | Unsigned | app | no |
 | Door_Open_Too_Long_Time | Unsigned | app | no |
+| Property_List | BACnetARRAY[N] of BACnetPropertyIdentifier | stack | no |
 
 ### Network Port 1 "Vermilion" - BACnet/IP; Network_Type and Protocol_Level are set from BACnetStack_AddNetworkPortObject()'s arguments (IPv4, BACnet Application) at start-up, not a GetProperty callback like the object's other app-served rows; Changes_Pending is likewise computed and answered natively by the stack's Network Port object. Reliability has no fault condition this example detects, so it is accepted at the generic default (normal)
 
