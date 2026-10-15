@@ -41,7 +41,7 @@ namespace CASExampleHelper {
 // version). Bump it whenever anything in common/ changes, and record the
 // change in common/CHANGELOG.md - every example in the series must then be
 // re-synced to the same common/ version.
-static const char* COMMON_VERSION = "3.1.0";
+static const char* COMMON_VERSION = "3.3.0";
 
 // Print the example's name + version, the linked CAS BACnet Stack version,
 // and the common/ helper version.
@@ -302,12 +302,12 @@ enum class KeyCommand {
                         //       the simulated foreign bus); docs/menu-keys.md.
     ContactToggle,  // 'o' - open/close a simulated door contact (or other two-state
                      //       physical input an example simulates). Added in
-                     //       common/ 3.1.0 for B-ACDC's door simulation.
+                     //       common/ 3.3.0 for B-ACDC's door simulation.
     ForceOpen,      // 'f' - force a simulated door open without a valid unlock (an
-                     //       access-control Failure Mode demo). common/ 3.1.0.
+                     //       access-control Failure Mode demo). common/ 3.3.0.
     BadgePulse      // 'p' - a local credential/badge "pulse unlock" command, as a
                      //       card reader wired to the controller would issue it.
-                     //       common/ 3.1.0.
+                     //       common/ 3.3.0.
 };
 
 // Non-blocking: returns a pending key command, or None if nothing was pressed.

@@ -3,10 +3,10 @@
 The shared Wiretest Harness of the BACnet profile example series. Vendored into each
 example; `WIRETEST_VERSION` in `__init__.py` names the version.
 
-## [0.2.0] - 2026-10-14
+## [0.3.0] - 2026-10-14
 
-Added for B-ACDC's Wire Tests (a client that commands an object and reads it back);
-nothing in it is door-specific.
+Added for B-ACDC's Wire Tests (a client that commands an object and reads it back),
+on top of B-RTR's 0.2.0; nothing in it is door-specific.
 
 ### Added
 
@@ -19,7 +19,8 @@ nothing in it is door-specific.
 - `endpoint`: `Client` - an `Endpoint` that numbers confirmed requests to one device
   and returns each answer (`request`, `read`, `read_values`, `read_value`, `write`).
   An unanswered request is re-sent once with the same invoke ID after 2 s, as any
-  BACnet client retries (cl. 5.4.4 TimeoutUnsegmented), and prints a `[RETRY]` line when it is.
+  BACnet client retries (cl. 5.4.4 TimeoutUnsegmented), and prints a `[RETRY]` line
+  when it is.
 - `process`: `Program.press(keys)` - type menu keys on an example's stdin (POSIX only:
   common/'s `PollKey()` reads a pipe there, not on Windows).
 
@@ -27,6 +28,17 @@ nothing in it is door-specific.
 
 - `process.Program` starts the example by its absolute path: on Windows a relative
   `--exe build/Release/X.exe` (forward slashes) was not found by `CreateProcess`.
+
+## [0.2.0] - 2026-10-14
+
+### Added
+
+- `peer.SimulatedDevice(..., broadcast=(broadcast_ip, udp_port))`: a second socket, bound
+  to that broadcast address with SO_REUSEADDR (POSIX), so the Peer hears the broadcasts on
+  the network it stands on - a Who-Is a router re-broadcasts there - and answers them from
+  its own socket like any other request. `received_on_broadcast` lists the frames that
+  arrived on it. Without the argument the Peer is unchanged.
+- `codec.i_am_device_instance(apdu)`: the Device instance an I-Am announces.
 
 ## [0.1.0] - 2026-10-14
 

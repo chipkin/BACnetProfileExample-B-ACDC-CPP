@@ -10,7 +10,7 @@ fail when the example's Profile Function is removed. See the series glossary
 | `codec` | Build and parse BVLC (Annex J), NPDU (clause 6: DNET/DADR, SNET/SADR, network layer messages) and APDU (clause 20) octets |
 | `endpoint` | `Endpoint` - a UDP socket that sends frames and collects replies; `Client` - ReadProperty / WriteProperty one device and get the answer (decoded values with `read_value`); `broadcast_listener` - capture what an example broadcasts (Linux/macOS) |
 | `process` | `start(exe, arguments, label)` - run an example until its `ready` line; `Program.press(keys)` (menu keys, POSIX); `Program.stop()`; `broadcast_address(console, port)` |
-| `peer` | `SimulatedDevice` - a Python BACnet/IP device (ReadProperty of its Device object, Who-Is/I-Am) that answers back through a router |
+| `peer` | `SimulatedDevice` - a Python BACnet/IP device (ReadProperty of its Device object, Who-Is/I-Am) that answers back through a router; `broadcast=(ip, port)` also makes it hear its network's broadcasts (Linux/macOS) |
 | `results` | `record` (a counted check), `known_gap` (a reported defect outside the example), `summary` (exit code) |
 
 ```python

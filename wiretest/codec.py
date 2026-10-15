@@ -368,6 +368,17 @@ def read_tag(data, position):
     return number, is_context, "value", data[position:position + length_value], position + length_value
 
 
+def i_am_device_instance(apdu):
+    """The Device instance an I-Am APDU (cl. 16.10.2) announces, or None if `apdu` is not an I-Am."""
+    if len(apdu) < 7 or apdu[0] >> 4 != PDU_UNCONFIRMED_REQUEST or apdu[1] != SERVICE_I_AM:
+        return None
+    number, is_context, kind, body, _ = read_tag(apdu, 2)
+    if is_context or number != 12 or len(body) != 4:   # application tag 12 = BACnetObjectIdentifier
+        return None
+    identifier = struct.unpack(">I", body)[0]
+    return identifier & MAX_INSTANCE if identifier >> 22 == OBJECT_TYPE_DEVICE else None
+
+
 def read_property_value(apdu):
     """The value octets inside a ReadProperty ComplexACK's [3] opening/closing tags, or None."""
     position = 3

@@ -38,17 +38,19 @@ bar, `docs/GLOSSARY.md` in the example series).
   forced-open and open-too-long Failure Modes, and the Simulation keys. Each
   check verified to fail with its feature removed (`tests/README.md`). CI runs
   them on Linux after the smoke test.
-- **`wiretest/` 0.2.0** vendored (the series' shared harness, from B-RTR 0.1.0
-  plus WriteProperty / `Client` / `Program.press`).
+- **`wiretest/` 0.3.0** vendored (the series' shared harness: B-RTR's 0.2.0 plus
+  WriteProperty, `Client`, `Program.press` and the absolute exe path).
 - `TODO.md`: the one known gap - the stack answers an out-of-range
   `Present_Value` with Reject (OTHER), not Error VALUE_OUT_OF_RANGE (stack
   #3642).
 
 ### Changed
 
-- **`common/` 3.0.0 -> 3.1.0**: `KeyCommand::ContactToggle` (`o`), `ForceOpen`
-  (`f`), `BadgePulse` (`p`). The rest of the series is not yet re-synced to
-  3.1.0.
+- **`common/` 3.0.0 -> 3.3.0**: 3.1.0 (`k`, B-GW) and 3.2.0 (broadcast send, B-RTR)
+  from the series line, plus 3.3.0's `KeyCommand::ContactToggle` (`o`),
+  `ForceOpen` (`f`) and `BadgePulse` (`p`) - committed in
+  BACnetProfileExample-B-SS-CPP on branch `common-3.3.0-door-keys` (b640a81) and
+  vendored verbatim. The rest of the series is not yet re-synced.
 - PICS: rows for `Door_Alarm_State`, the writable properties, version 1.2.0.
 
 ## [1.1.2] - unreleased

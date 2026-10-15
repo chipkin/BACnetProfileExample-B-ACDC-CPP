@@ -20,7 +20,7 @@ one example, bump the version, then copy it to every example that vendors it.
 Python 3 standard library only.
 """
 
-WIRETEST_VERSION = "0.2.0"
+WIRETEST_VERSION = "0.3.0"
 
 from . import codec, endpoint, peer, process, results  # noqa: E402,F401
 from .codec import *  # noqa: E402,F401,F403
