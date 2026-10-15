@@ -86,10 +86,9 @@ def main():
         # --- Writes the door must refuse ------------------------------------------------
         answer = command(door, 4, 8)
         record("Present_Value 4 (not a BACnetDoorValue) is refused (no SimpleACK)",
-               answer is not None and answer.pdu_type in (wiretest.PDU_ERROR, wiretest.PDU_REJECT), describe(answer))
+               setup.refused(answer), describe(answer))
         wiretest.known_gap("... with Error PROPERTY / VALUE_OUT_OF_RANGE (cl. 15.9.1.3.1)",
-                           answer is not None and wiretest.error_class_and_code(answer.payload) ==
-                           (ERROR_CLASS_PROPERTY, ERROR_CODE_VALUE_OUT_OF_RANGE),
+                           answer.error == (ERROR_CLASS_PROPERTY, ERROR_CODE_VALUE_OUT_OF_RANGE),
                            "the stack Rejects it (reason OTHER) while decoding, before main.cpp sees it: "
                            "chipkin/cas-bacnet-stack#3642")
         slot_8 = door_value(door, PROPERTY_PRIORITY_ARRAY, 8)
@@ -97,8 +96,7 @@ def main():
 
         answer = write_door(door, setup.PROPERTY_DOOR_STATUS, application_enumerated(DOOR_OPENED))
         record("Door_Status written while in service is refused: Error PROPERTY / WRITE_ACCESS_DENIED",
-               answer is not None and wiretest.error_class_and_code(answer.payload) ==
-               (ERROR_CLASS_PROPERTY, ERROR_CODE_WRITE_ACCESS_DENIED), describe(answer))
+               answer.error == (ERROR_CLASS_PROPERTY, ERROR_CODE_WRITE_ACCESS_DENIED), describe(answer))
     finally:
         door.close()
         example.stop()

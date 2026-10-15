@@ -68,7 +68,7 @@ def main():
     try:
         record("Control: the door answers, LOCKED and SECURED, nothing commanding it",
                door_state(door) == (LOCK, None, None, LOCKED, SECURED), f"read {door_state(door)}")
-        listed = door.read_values(*setup.DOOR, wiretest.PROPERTY_PROPERTY_LIST) or []
+        listed = setup.door_values(door, wiretest.PROPERTY_PROPERTY_LIST)
         served = {PROPERTY_PRESENT_VALUE, PROPERTY_PRIORITY_ARRAY, PROPERTY_CURRENT_COMMAND_PRIORITY,
                   setup.PROPERTY_DOOR_STATUS, setup.PROPERTY_LOCK_STATUS, setup.PROPERTY_SECURED_STATUS,
                   setup.PROPERTY_DOOR_ALARM_STATE, setup.PROPERTY_DOOR_PULSE_TIME,

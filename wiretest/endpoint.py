@@ -4,8 +4,7 @@
 import socket
 import time
 
-from .codec import (PDU_COMPLEX_ACK, PDU_CONFIRMED_REQUEST, Frame, bvlc, decoded_values, npdu,
-                    read_property_request, read_property_value, write_property_request)
+from .codec import Frame
 
 
 class Endpoint:
@@ -58,73 +57,6 @@ class Endpoint:
 
     def close(self):
         self.sock.close()
-
-
-class Client(Endpoint):
-    """A BACnet client of ONE device on one UDP port: numbers its confirmed requests and
-    returns the answer to each (the Frame, or None after `timeout` seconds).
-
-        door = Client(47820)
-        answer = door.write(30, 1, PROPERTY_PRESENT_VALUE, application_enumerated(2), priority=8)
-        answer.pdu_type == PDU_SIMPLE_ACK
-        door.read_value(30, 1, PROPERTY_PRESENT_VALUE)          # -> 2
-    """
-
-    def __init__(self, device_port, device_ip="127.0.0.1", timeout=2, retries=1, **endpoint_options):
-        super().__init__(**endpoint_options)
-        self.device_port = device_port
-        self.device_ip = device_ip
-        self.timeout = timeout
-        self.retries = retries
-        self.next_invoke_id = 0
-
-    def request(self, build):
-        """Send the confirmed request `build(invoke_id)` returns; wait for its answer.
-
-        Unanswered after `timeout` seconds, it is sent again with the SAME invoke ID, up
-        to `retries` times - what every BACnet client does (APDU_Timeout /
-        Number_Of_APDU_Retries; TimeoutUnsegmented in the client state machine,
-        cl. 5.4.4). Each retry prints a [RETRY] line, so a device that needs them is
-        visible in the test output rather than silently tolerated."""
-        self.next_invoke_id = (self.next_invoke_id + 1) % 256
-        invoke_id = self.next_invoke_id
-        octets = bvlc(npdu(build(invoke_id), expecting_reply=True))
-        for attempt in range(1 + self.retries):
-            if attempt:
-                print(f"[RETRY] invoke ID {invoke_id} unanswered after {self.timeout} s - sent again", flush=True)
-            self.send(octets, self.device_port, self.device_ip)
-            answer = self.wait_for(lambda frame: frame.network_message is None and frame.invoke_id == invoke_id and
-                                   frame.pdu_type != PDU_CONFIRMED_REQUEST, self.timeout)
-            if answer is not None:
-                return answer
-        return None
-
-    def read(self, object_type, instance, property_identifier, array_index=None):
-        return self.request(lambda invoke_id: read_property_request(
-            invoke_id, object_type, instance, property_identifier, array_index))
-
-    def read_values(self, object_type, instance, property_identifier, array_index=None):
-        """The decoded values of a ReadProperty answer (see codec.decoded_values), or None
-        when the answer is not a ComplexACK."""
-        answer = self.read(object_type, instance, property_identifier, array_index)
-        if answer is None or answer.pdu_type != PDU_COMPLEX_ACK:
-            return None
-        return decoded_values(read_property_value(answer.payload) or b"")
-
-    def read_value(self, object_type, instance, property_identifier, array_index=None):
-        """The single value a ReadProperty returns (NULL -> None), or the string 'no answer'
-        / 'error' so a comparison with an expected value fails readably."""
-        answer = self.read(object_type, instance, property_identifier, array_index)
-        if answer is None:
-            return "no answer"
-        if answer.pdu_type != PDU_COMPLEX_ACK:
-            return "error"
-        values = decoded_values(read_property_value(answer.payload) or b"")
-        return values[0] if len(values) == 1 else values
-
-    def write(self, object_type, instance, property_identifier, value_octets, priority=None, array_index=None):
-        return self.request(lambda invoke_id: write_property_request(
-            invoke_id, object_type, instance, property_identifier, value_octets, priority, array_index))
 
 
 def broadcast_listener(broadcast_ip, port):

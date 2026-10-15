@@ -3,24 +3,21 @@
 The shared Wiretest Harness of the BACnet profile example series. Vendored into each
 example; `WIRETEST_VERSION` in `__init__.py` names the version.
 
-## [0.3.0] - 2026-10-14
+## [0.4.0] - 2026-10-14
 
-Added for B-ACDC's Wire Tests (a client that commands an object and reads it back),
-on top of B-RTR's 0.2.0; nothing in it is door-specific.
+Added for B-ACDC's wire tests (a client that commands a door and reads it back), on top
+of B-GW's 0.3.0; nothing in it is door-specific. Additive: every 0.3.0 call keeps its
+meaning (the `Client` retry is off unless asked for).
 
 ### Added
 
-- `codec`: `write_property_request` (cl. 15.9, optional priority and array index),
-  an optional `array_index` on `read_property_request`, `application_null`,
-  `application_boolean`, `decoded_values` (NULL / BOOLEAN / Unsigned / Enumerated to
-  Python values), `error_class_and_code`, and the property / error numbers
-  Out_Of_Service, Priority_Array, Relinquish_Default, Status_Flags, Property_List,
-  Current_Command_Priority, VALUE_OUT_OF_RANGE.
-- `endpoint`: `Client` - an `Endpoint` that numbers confirmed requests to one device
-  and returns each answer (`request`, `read`, `read_values`, `read_value`, `write`).
-  An unanswered request is re-sent once with the same invoke ID after 2 s, as any
-  BACnet client retries (cl. 5.4.4 TimeoutUnsegmented), and prints a `[RETRY]` line
-  when it is.
+- `client.Client(..., retries=N)`: an unanswered request is sent again with the same
+  invoke id, up to N times (cl. 5.4.4 TimeoutUnsegmented), each retry printing a
+  `[RETRY]` line. Default 0.
+- `codec`: `application_boolean`; `decoded_values` (every application primitive in a
+  value - a Property_List, a whole Priority_Array); `PROPERTY_OUT_OF_SERVICE`,
+  `PROPERTY_PROPERTY_LIST`, `PROPERTY_CURRENT_COMMAND_PRIORITY`,
+  `ERROR_CODE_VALUE_OUT_OF_RANGE`.
 - `process`: `Program.press(keys)` - type menu keys on an example's stdin (POSIX only:
   common/'s `PollKey()` reads a pipe there, not on Windows).
 
@@ -28,6 +25,31 @@ on top of B-RTR's 0.2.0; nothing in it is door-specific.
 
 - `process.Program` starts the example by its absolute path: on Windows a relative
   `--exe build/Release/X.exe` (forward slashes) was not found by `CreateProcess`.
+
+(B-ACDC first numbered these additions 0.2.0, then 0.3.0, before B-RTR's 0.2.0 and
+B-GW's 0.3.0 were known; neither of those B-ACDC copies was ever published.)
+
+## [0.3.0] - 2026-10-14
+
+Added for B-GW's wire tests; nothing in it is gateway-specific. Additive: every 0.2.0
+call keeps its meaning.
+
+### Added
+
+- `client`: `Client` (an `Endpoint` that numbers invoke ids and waits for the matching
+  answer) with `request`, `read_property` and `write_property`, each optionally addressed
+  through a router (`dnet=`, `dadr=`); `Answer` (`ok`, `value`, `value_octets`, `error`).
+- `codec`: `write_property_request` (priority, array index), `read_property_request`
+  takes an optional `array_index`; `application_null`, `application_real`;
+  `decode_application` (NULL, BOOLEAN, Unsigned, Signed, REAL, Double,
+  CharacterString, BIT STRING, Enumerated, ObjectIdentifier), `application_tag`,
+  `error_class_and_code`; constants for Analog/Binary Output, Description, Object_List,
+  Priority_Array, Reliability, Relinquish_Default, Status_Flags, the
+  BACnetReliability values a gateway reports, the Status_Flags bit positions and the
+  application tag numbers.
+- `process`: `start(..., environment=)` / `Program(..., environment=)` - extra
+  environment variables for the example, for a test-only switch an example reads and
+  its command line never offers.
 
 ## [0.2.0] - 2026-10-14
 

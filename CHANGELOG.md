@@ -38,8 +38,9 @@ bar, `docs/GLOSSARY.md` in the example series).
   forced-open and open-too-long Failure Modes, and the Simulation keys. Each
   check verified to fail with its feature removed (`tests/README.md`). CI runs
   them on Linux after the smoke test.
-- **`wiretest/` 0.3.0** vendored (the series' shared harness: B-RTR's 0.2.0 plus
-  WriteProperty, `Client`, `Program.press` and the absolute exe path).
+- **`wiretest/` 0.4.0** vendored (the series' shared harness: B-GW's 0.3.0 plus an
+  opt-in visible `Client` retry, `Program.press`, `decoded_values`,
+  `application_boolean` and the absolute exe path).
 - `TODO.md`: the one known gap - the stack answers an out-of-range
   `Present_Value` with Reject (OTHER), not Error VALUE_OUT_OF_RANGE (stack
   #3642).

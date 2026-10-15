@@ -67,29 +67,61 @@ def start_door(args, label="door"):
     return wiretest.start(args.exe, ["--port", args.port], label)
 
 
+class Door:
+    """Access Door 1 as the Peer sees it: a wiretest.Client aimed at the door controller.
+    One retry, as a BACnet client makes (it prints [RETRY] if it is ever needed)."""
+
+    def __init__(self, args):
+        self.client = wiretest.Client(retries=1)
+        self.port = args.port
+
+    def read(self, property_identifier, array_index=None):
+        return self.client.read_property(self.port, *DOOR, property_identifier, array_index, timeout=2.0)
+
+    def write(self, property_identifier, value_octets, priority=None):
+        return self.client.write_property(self.port, *DOOR, property_identifier, value_octets, priority,
+                                          timeout=2.0)
+
+    def close(self):
+        self.client.close()
+
+
 def client(args):
-    return wiretest.Client(args.port)
+    return Door(args)
 
 
 def door_value(door, property_identifier, array_index=None):
-    return door.read_value(*DOOR, property_identifier, array_index)
+    """The decoded value of a ReadProperty (NULL -> None), or 'no answer' / 'error' so a
+    comparison with an expected value fails readably."""
+    answer = door.read(property_identifier, array_index)
+    if not answer.answered:
+        return "no answer"
+    if not answer.ok:
+        return "error"
+    return answer.value
+
+
+def door_values(door, property_identifier):
+    """Every value of a list- or array-valued property (Property_List), or []."""
+    answer = door.read(property_identifier)
+    return wiretest.decoded_values(answer.value_octets) if answer.ok else []
 
 
 def write_door(door, property_identifier, value_octets, priority=None):
-    return door.write(*DOOR, property_identifier, value_octets, priority)
+    return door.write(property_identifier, value_octets, priority)
 
 
 def acked(answer):
-    return answer is not None and answer.pdu_type == wiretest.PDU_SIMPLE_ACK
+    return answer.answered and answer.frame.pdu_type == wiretest.PDU_SIMPLE_ACK
+
+
+def refused(answer):
+    """An Error or a Reject - anything but an acknowledgement."""
+    return answer.answered and answer.frame.pdu_type in (wiretest.PDU_ERROR, wiretest.PDU_REJECT)
 
 
 def describe(answer):
-    if answer is None:
-        return "no answer"
-    error = wiretest.error_class_and_code(answer.payload)
-    if error:
-        return f"Error class {error[0]} code {error[1]}"
-    return f"APDU {answer.payload.hex()}"
+    return answer.describe()
 
 
 def shorten_timings(door):

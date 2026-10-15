@@ -33,9 +33,6 @@ import wiretest
 from wiretest import (PROPERTY_OUT_OF_SERVICE, PROPERTY_PRESENT_VALUE, PROPERTY_STATUS_FLAGS, application_boolean,
                       record)
 
-STATUS_FLAG_OUT_OF_SERVICE = 3   # bit 3 of BACnetStatusFlags (cl. 12.26.6)
-
-
 def alarm(door):
     return door_value(door, setup.PROPERTY_DOOR_ALARM_STATE)
 
@@ -55,11 +52,10 @@ def main():
 
         answer = write_door(door, PROPERTY_OUT_OF_SERVICE, application_boolean(True))
         record("Out_Of_Service TRUE is accepted", acked(answer), describe(answer))
-        flags = door.read(*setup.DOOR, PROPERTY_STATUS_FLAGS)
-        flag_bits = wiretest.read_property_value(flags.payload) if flags is not None else None
-        # BACnetStatusFlags is a 4-bit BIT STRING: tag 0x82, unused-bits octet, one data octet.
-        out_of_service_flag = flag_bits is not None and len(flag_bits) == 3 and bool(flag_bits[2] & (0x80 >> STATUS_FLAG_OUT_OF_SERVICE))
-        record("Status_Flags shows OUT_OF_SERVICE", out_of_service_flag, f"read {flag_bits.hex() if flag_bits else None}")
+        flags = door_value(door, PROPERTY_STATUS_FLAGS)   # BACnetStatusFlags: 4 bits, bit 0 first
+        record("Status_Flags shows OUT_OF_SERVICE",
+               isinstance(flags, list) and len(flags) == 4 and flags[wiretest.STATUS_FLAG_OUT_OF_SERVICE],
+               f"read {flags}")
 
         # --- Failure Mode 1: forced open -------------------------------------------------
         record("Door_Status OPENED is writable while out of service", set_door_status(door, DOOR_OPENED))
@@ -100,7 +96,7 @@ def main():
         # --- Back in service ---------------------------------------------------------------
         record("Out_Of_Service FALSE is accepted", acked(write_door(door, PROPERTY_OUT_OF_SERVICE, application_boolean(False))))
         answer = write_door(door, setup.PROPERTY_DOOR_STATUS, application_enumerated(DOOR_OPENED))
-        record("In service again: writing Door_Status is refused", answer is not None and answer.pdu_type == wiretest.PDU_ERROR,
+        record("In service again: writing Door_Status is refused", answer.error is not None,
                describe(answer))
         record("Door_Status reads the contact again: CLOSED",
                door_value(door, setup.PROPERTY_DOOR_STATUS) == DOOR_CLOSED)
