@@ -111,11 +111,11 @@ jobs:
           cat "${{ matrix.metrics }}"
           { echo '### metrics (${{ matrix.os }})'; echo '```json'; cat "${{ matrix.metrics }}"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
-      # The Wire Tests: Python clients (the Peers) command the door over BACnet/IP and
-      # check it re-locks itself, arbitrates priorities, and reports forced-open and
-      # open-too-long (tests/README.md). Python 3 standard library only. Linux: the
+      # The Wire Tests: Python clients (the Peers) discover the device (every listed
+      # property reads), command the door over BACnet/IP and check it re-locks itself,
+      # arbitrates priorities, and reports forced-open and open-too-long (tests/README.md). Python 3 standard library only. Linux: the
       # door Simulation's menu keys reach the example through stdin only on POSIX.
-      - name: Wire Tests (Profile Function + Failure Modes)
+      - name: Wire Tests (discovery, Profile Function + Failure Modes)
         if: runner.os == 'Linux'
         shell: bash
         run: python3 tests/run_wire_tests.py --exe "${{ matrix.exe }}"

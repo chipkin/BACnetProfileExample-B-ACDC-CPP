@@ -63,6 +63,17 @@ bar, `docs/GLOSSARY.md` in the example series).
   BACnetProfileExample-B-SS-CPP on branch `common-3.3.0-door-keys` (b640a81) and
   vendored verbatim. The rest of the series is not yet re-synced.
 - PICS: rows for `Door_Alarm_State`, the writable properties, version 1.2.0.
+- **`common/` 3.3.0 -> 3.4.0** (verbatim from B-SS-CPP `5d78299`):
+  `HelperSendMessage` sends a broadcast addressed to the socket's own address to
+  the subnet broadcast instead. No change in this example's behaviour; every
+  Wire Test passes as before.
+- **`wiretest/` 0.5.0 -> 0.6.0** (verbatim from B-LS-CPP, identical in B-BC and
+  B-AAC): additive codec helpers, `peer.SimulatedServer`, `alarm`,
+  `workstation` and `wait`. The door tests needed no change.
+- **Wire Tests: `tests/discovery_test.py`** (the series' discovery test, from
+  B-SS-CPP, with its visible Who-Is `[RETRY]`): Who-Is, Object_List, and a
+  ReadProperty of every property every object lists - 12 checks, 97 reads, all
+  values. Runs first in `tests/run_wire_tests.py` (and so in CI).
 
 ## [1.1.2] - unreleased
 

@@ -16,7 +16,7 @@ Build the example (README "Build"), then from the repository root:
 python3 tests/run_wire_tests.py --exe build/BACnetExampleBACDC
 ```
 
-It runs the four scripts below one after another and ends with
+It runs the five scripts below one after another and ends with
 `ALL WIRE TESTS PASSED` (exit 0) or the scripts that failed. Each script also
 runs on its own with the same `--exe` / `--port` options (`--port`, default
 47830, is the door controller's UDP port). The whole run takes about half a
@@ -48,6 +48,29 @@ over the wire. To make the door open and shut without anyone at the console, it
 uses the standard's own mechanism: `Out_Of_Service` = TRUE makes `Door_Status`
 writable and the door "respond to changes made to these properties, as if those
 changes had occurred to the physical door" (ANSI/ASHRAE 135-2024 12.26.9 (d)).
+
+## `discovery_test.py` - every listed property reads as a value
+
+The series' discovery test, copied from B-SS-CPP; only the device instance,
+executable name, port and the expected objects differ.
+
+1. **Who-Is** (for 389011, unicast) -> the device's I-Am. Who-Is is
+   unconfirmed, so if no I-Am comes back in 3 s it is sent once more, with a
+   visible `[RETRY]` line.
+2. **Device `Object_List`** names exactly the Device, Analog Input 1, Binary
+   Input 1, Multi-state Input 1, Access Door 1 and Network Port 1. This is the
+   control: a walk over nothing would pass.
+3. For each object, **`Property_List`** reads, and a ReadProperty of every
+   property it lists - plus `Object_Identifier`, `Object_Name`, `Object_Type`
+   and `Property_List`, which cl. 12.1.1.4.1 leaves out of the list - returns a
+   ComplexACK. An Error, Reject, Abort or no answer prints an `[UNREADABLE]` line
+   and fails the check. 135-2024 cl. 12.1.1.4.1: Property_List holds "one
+   property identifier for each property that exists within the object".
+4. Network Port 1's **`IP_DNS_Server` (406)**, **`FD_BBMD_Address` (418)** and
+   **`FD_Subscription_Lifetime` (419)** are each listed and read as a value -
+   the three reads Chipkin BACnet Explorer found failing at stack 6.0.21
+   (reported against B-SS-CPP as #20, #21, #22; this example sets up its Network
+   Port the same way).
 
 ## `pulse_test.py` - the door re-locks itself (DS-ACAD-B, 12.26.16 / 12.26.17)
 
@@ -145,3 +168,10 @@ Ubuntu 22.04, SOURCE build, Python 3.10) 65/65 twice, no `[RETRY]`; the stack
 #3642 line still prints `[KNOWN GAP]`. The pulse-expiry row above was re-run at
 this pin on Windows and gave the same 13/20, 14/17, 17/19. The other rows were
 not re-run.
+
+Re-run 2026-10-15 against stack `6.x` @ `64b2cfac5` with `wiretest/` 0.6.0,
+`common/` 3.4.0 and the new `discovery_test.py` (12 checks, 97 reads, all
+values): Windows (STATIC build) 68/68 with `door_keys_test.py` skipped, one
+`[RETRY]` (a lost ReadProperty in `door_alarm_test.py`, answered on the resend);
+Linux (WSL Ubuntu 22.04, SOURCE build) 77/77, no `[RETRY]`. The stack #3642
+line still prints `[KNOWN GAP]`.

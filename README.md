@@ -21,7 +21,7 @@ long**. The lock relay and door contact it drives are a
 
 > **Versions:** this document describes **example v1.2.0**, built and verified
 > against **CAS BACnet Stack 6.0.23** (`6.x` @ `64b2cfac5`), at
-> **Protocol_Revision 30**, with the vendored `common/` helper at **v3.3.0**.
+> **Protocol_Revision 30**, with the vendored `common/` helper at **v3.4.0**.
 > Running the example prints all three - if what it prints disagrees with this
 > line, trust the program and check `CHANGELOG.md`.
 
@@ -237,7 +237,7 @@ Expected output:
 ```
 BACnet B-ACDC (Access Control Door Controller) Example - C++ v1.2.0
 CAS BACnet Stack version: 6.0.23.0
-Common helper (common/) version: 3.3.0
+Common helper (common/) version: 3.4.0
 FYI: Listening for BACnet/IP on UDP port 47808 (Network Port 1).
 TX 21 bytes to 192.168.3.255:47808 (broadcast) (Network Port 1) - Unconfirmed: I-Am
 FYI: Device 389011 ("Chipkin Example B-ACDC") ready. Vendor ID 389. Press 'h' for help.
@@ -307,7 +307,8 @@ Python client - the Peer:
 python3 tests/run_wire_tests.py --exe build/BACnetExampleBACDC
 ```
 
-They check that `pulseUnlock` and `extendedPulseUnlock` are relinquished at
+They first discover the device the way a BACnet client does - every
+property every object lists must read as a value - then check that `pulseUnlock` and `extendedPulseUnlock` are relinquished at
 their own priority after their own times (Priority_Array slot NULL,
 Present_Value `lock`, relay locked), priority arbitration between a pulse and
 another command in both directions, refusal of a value that is not a

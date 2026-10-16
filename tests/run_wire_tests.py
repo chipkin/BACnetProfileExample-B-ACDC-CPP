@@ -17,7 +17,7 @@ from pathlib import Path
 import acdc_setup as setup
 
 TESTS = Path(__file__).resolve().parent
-SCRIPTS = ["pulse_test.py", "arbitration_test.py", "door_alarm_test.py", "door_keys_test.py"]
+SCRIPTS = ["discovery_test.py", "pulse_test.py", "arbitration_test.py", "door_alarm_test.py", "door_keys_test.py"]
 
 
 def main():
